@@ -1,0 +1,2072 @@
+tensorProduct (HomogeneousVectorBundle, HomogeneousVectorBundle) := (E1,E2) -> (
+    X := E1#"underlyingVariety";
+    RP := E1#"rootSystem";
+    T := new MutableHashTable;
+    Ttemp := new MutableHashTable;
+    R := X#"rootSystem";
+    if not RP == E2#"rootSystem" then error "expected vector bundles on the same variety";
+    LX := sort toList ((set toList(1..rank R)) - ((X#"parabolicSubgroup")#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    if rank(E2) < rank(E1) then ( -- mi assicuro che E1 è quello di rango più basso
+	E := E1;
+	E1 = E2;
+	E2 = E;
+	);
+    if rank(E1) == 1 then return homogeneousVectorBundle(apply(E2#"weights", l -> l + (E1#"weights")#0), E2#"multiplicities",X);
+    if E1#"irreducible" and E2#"irreducible" then (
+	l1 := (E1#"parabolicWeights")#0;
+	W := dominantCharacterHighestWeight(RP,l1);
+	--l1' := ((E1#"weights")#0)^LX'; -- parte del peso complementare a l1
+	l2 := (E2#"parabolicWeights")#0;
+	--l2' := ((E2#"weights")#0)^LX'; -- parte del peso complementare a l2
+	Ttemp = tensorProduct(l1,l2,RP,W);
+	Ttemp = new HashTable from Ttemp;
+	d := (rank(E2)*chern(1,E1) + rank(E1)*chern(1,E2))/(rank(E1)*rank(E2)); -- mail di Vladimiro 9/7/25
+	-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+	for t in keys Ttemp do (
+	    E := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"), {1}, X);
+	    c := lift(d-chern(1,E)/rank E,ZZ);
+	    l' := weight(R,mixWeights(t,entries c,LX));
+	    if T#?(l') then T#(l') = T#(l') + Ttemp#t
+	    else T#(l') = Ttemp#t;
+	    );
+	T = new HashTable from T;
+	E = homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+	--E = tensorProduct(E,homogeneousVectorBundle({weight(R,mixWeights(weight(RP,toList ((rank RP):0)), entries(l1'+l2'),LX))},{1},X));
+	--if rank E =!= rank E1 * rank E2 then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+	--if chern(1,E) =!= lift(d*rank(E1)*rank(E2),ZZ) then error "sto sbagliando nel calcolare la classe di chern";
+	return E;
+	)
+    else (
+	S := homogeneousVectorBundle({},{},X);
+	for i from 0 to #(E1#"weights")-1 do (
+	    for j from 0 to #(E2#"weights")-1 do (
+		E = tensorProduct(homogeneousVectorBundle({(E1#"weights")#i},{1},X),homogeneousVectorBundle({(E2#"weights")#j},{1},X));
+		S = S + homogeneousVectorBundle(E#"weights",apply(E#"multiplicities", k -> k * (E1#"multiplicities")#i * (E2#"multiplicities")#j),X);
+		);
+	    );
+	return S;
+	);
+    )
+
+-- prodotto tensore di un totalmente riducibile con una filtrazione
+tensorProduct (FiltrationBundle, HomogeneousVectorBundle) := (F,E) -> (
+    X := E#"underlyingVariety";
+    return filtrationBundle(apply(F#"factors", f -> f*E),X);
+    )
+
+tensorProduct (HomogeneousVectorBundle, FiltrationBundle) := (E,F) -> (
+    X := E#"underlyingVariety";
+    return filtrationBundle(apply(F#"factors", f -> f*E),X);
+    )
+    
+
+-- prodotto tensore di più di due fibrati
+tensorProduct List := S -> (
+    E := S#0;
+    for i from 1 to length S -1 do (
+	E = tensorProduct(E,S#i);
+	);
+    E
+    )
+
+HomogeneousVectorBundle * HomogeneousVectorBundle := (E1,E2) -> tensorProduct(E1,E2)    
+
+FiltrationBundle * HomogeneousVectorBundle := (E1,E2) -> tensorProduct(E1,E2)    
+
+HomogeneousVectorBundle * FiltrationBundle := (E1,E2) -> tensorProduct(E1,E2)    
+
+
+/// TEST
+needsPackage "CohomologyZeroLociInHomogeneousVarieties"
+R = rootSystemA(5); -- i massimali sono le grassmanniane in Gr(k,6) con k l'indice che escludo
+P = newParabolic(R,set{1,2,4,5});
+X = homogeneousVariety(P); -- Gr(3,6)
+l1 = weight(R,{1,0,0,0,0});
+l2 = weight(R,{0,0,0,0,1});
+E1 = homogeneousVectorBundle({l1},{1},X);
+E2 = homogeneousVectorBundle({l2},{1},X);
+E = tensorProduct(E1,E2); -- l = weight(R,{1,0,0,0,1}); -- Q*U' -- homogeneousVectorBundle({l},{1},X);
+rank E
+
+R = rootSystemA(6); 
+P = newParabolic(R,set{1,2,4,5,6});
+X = homogeneousVariety(P); 
+l1 = weight(R,{1,0,0,0,0,1});
+l2 = weight(R,{0,0,0,0,0,1});
+E1 = homogeneousVectorBundle({l1},{2},X);
+E2 = homogeneousVectorBundle({l2},{3},X);
+E = tensorProduct(E2,E1);
+///
+
+HashTable + HashTable := (T1,T2) -> (
+    T := new MutableHashTable;
+    for t1 in keys T1 do (
+	if T2#?t1 then T#t1 = T1#t1 + T2#t1
+	else T#t1 = T1#t1;
+	);
+    for t2 in keys T2 do (
+	if not T#?t2 then T#t2 = T2#t2;
+	);
+    return T;
+    )
+
+ZZ ** HashTable := (m,T1) -> (
+    T := new MutableHashTable;
+    for t1 in keys T1 do (
+	T#t1 = m * T1#t1;
+	);
+    return T;
+    )
+
+HomogeneousVectorBundle + HomogeneousVectorBundle := (E1,E2) -> (
+    -- assert (E1#"underlyingVariety" === E2#"underlyingVariety")
+    T1 := new MutableHashTable;
+    T2 := new MutableHashTable;
+    for i from 0 to #(E1#"weights")-1 do (
+	T1#((E1#"weights")#i) = (E1#"multiplicities")#i;
+	);
+    for i from 0 to #(E2#"weights")-1 do (
+	T2#((E2#"weights")#i) = (E2#"multiplicities")#i;
+	);
+    T1 = new HashTable from T1;
+    T2 = new HashTable from T2;
+    T := T1 + T2;
+    homogeneousVectorBundle(keys T, values T, E1#"underlyingVariety")
+    )
+
+---------------------------------------------------------------------------------------------------
+
+symmetricPower (ZZ,HomogeneousVectorBundle) := (n,E) -> (
+    X := E#"underlyingVariety";
+    r := rank E;
+    R := X#"rootSystem";
+    S := homogeneousVectorBundle({},{},X);
+    RP := E#"rootSystem";
+    Ttemp := new MutableHashTable;
+    T := new MutableHashTable;
+    LX := sort toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    if n == 1 then return E;
+    if n == 0 then return structureSheaf X;
+    if r == 1 then return tensorProduct(toList apply(1..n, i -> E));
+    if E#"irreducible" then (
+	l := (E#"parabolicWeights")#0;
+	--l1 := ((E#"weights")#0)^LX';
+	if rank RP == 0 then Ttemp = new HashTable from {(l,1)} -- caso flag completa
+	else Ttemp = new HashTable from symmetricPower(n,l,RP);
+	d := binomial(r+n-1,n-1)*chern(1,E)/binomial(r+n-1,n); 
+	for t in keys Ttemp do (
+	    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+	    c := lift(d-chern(1,E')/rank(E'),ZZ);
+	    l' := weight(R,mixWeights(t,entries c,LX));
+	    --if T#?(l') then T#(l') = T#(l') + Ttemp#t
+	    --else T#(l') = Ttemp#t;
+	    T#l' = Ttemp#t; -- ho lasciato solo questo perchè secondo me non può succedere che ci siano ripetizioni nel caso irriducibile
+	    );
+	T = new HashTable from T;
+	E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+	--if rank E' =!= binomial(r+n-1,n) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+	--if chern(1,E') =!=  binomial(r+n-1,n-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+	return E';
+	)
+    else if #(E#"weights") == 1 then (
+	m := (E#"multiplicities")#0;
+	E' = homogeneousVectorBundle(E#"weights",{1},X);
+	L := apply(partitions(n,m), k -> conjugate k);
+	ListBundles := new MutableHashTable from {};
+	listSym := multipleSymmetricPower(n,E');
+	for l in L do (
+	    l' := join(toList l, m - #l : 0);
+	    ListBundles#(l') = tensorProduct (apply(l', i -> listSym#i));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	M := kunnethPartitions(n,m);
+	M = new HashTable from (tally M);
+	for g in keys M do (
+	    for i from 1 to M#g do (
+		S = S + ListBundles#g;
+		);
+	    );	
+	return S;
+	-*
+	m := (E#"multiplicities")#0;
+	E' = homogeneousVectorBundle(E#"weights",{1},X);
+	L := apply(partitions(n,m), k -> conjugate k);
+	ListBundles := new MutableHashTable from {};
+	for l in L do (
+	    l' := join(toList l, m - #l : 0);
+	    ListBundles#(l') = tensorProduct (apply(l', i -> symmetricPower(i,E')));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	M := kunnethPartitions(n,m);
+	M = new HashTable from (tally M);
+	for g in keys M do (
+	    for i from 1 to M#g do (
+		S = S + ListBundles#g;
+		);
+	    );	
+	return S;
+	*-
+	)
+    else (
+	k := #(E#"weights");
+	L = compositions(k,n);
+	ListBundles = new MutableHashTable from {};
+	listSym = for i from 0 to k-1 list (
+	    multipleSymmetricPower(n,homogeneousVectorBundle({(E#"weights")#i},{(E#"multiplicities")#i},X))
+	    );
+	 for l in L do (
+	    ListBundles#l = tensorProduct (toList apply(0..#l-1, i -> (listSym#i)#(l#i)));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	for l in L do (
+	    S = S + ListBundles#l;
+	    );	
+	return S;
+	);
+    )
+
+///TEST
+R=rootSystemA(4); 
+P = newParabolic(R,set{1,2,4}); -- Gr(3,5)
+X = homogeneousVariety(R,P);
+l=weight(R,{1,0,0,0}); -- U'
+E=homogeneousVectorBundle({l},{1},X);
+time SE = symmetricPower(3,E); -- S^3U'
+peek SE
+///
+
+
+
+
+-- ritorna la lista delle potenze simmetriche di B da 0 a k, calcolate in modo induttivo
+multipleSymmetricPower = method();
+multipleSymmetricPower(ZZ, HomogeneousVectorBundle) := (k,B) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := B#"underlyingVariety";
+    if k == 0 then return {structureSheaf(X)};
+    if k == 1 then return {structureSheaf(X),B};
+    R := X#"rootSystem";
+    S := homogeneousVectorBundle({},{},X);
+    RP := B#"rootSystem";
+    LX := sort toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    rB := rank B;
+    output := {structureSheaf(X)};
+    if B#"irreducible" then (
+	l := (B#"parabolicWeights")#0; -- componente senza line bundle
+	--l1 := ((B#"weights")#0)^LX'; -- componente del line bundle
+	-- costruiamo le potenze simmetriche di B in modo intelligente
+	-- teniamo in memoria i conti già fatti
+	if rank RP == 0 then Ttemp := apply(k+1, i -> new HashTable from {(l,1)}) -- caso flag completa
+	else Ttemp = multipleSymmetricPowerLie(k, l, RP);
+	for i from 1 to k do (
+	    T := new MutableHashTable;
+	    d := binomial(rB+i-1,i-1)*chern(1,B)/binomial(rB+i-1,i); 
+	    -- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+	    for t in keys Ttemp#i do (
+		B' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		c := lift(d-chern(1,B')/rank(B'),ZZ);
+		l' := weight(R,mixWeights(t,entries c,LX));
+		if T#?(l') then T#(l') = T#(l') + (Ttemp#i)#t
+		else T#(l') = (Ttemp#i)#t;
+		);
+	    T = new HashTable from T;
+	    B' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+	    --if rank B' =!= binomial(rB+i-1,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+	    --if chern(1,B') =!=  binomial(rB+i-1,i-1)*chern(1,B) then error "sto sbagliando nel calcolare la classe di chern";
+	    output = output | {B'};
+	    );
+	return output;
+	);
+    -- caso non irriducibile
+    m := B#"multiplicities";
+    M := B#"parabolicWeights";
+    M' := B#"weights";
+    result := new HashTable from pack (mingle (M,m),2);
+    if rank RP == 0 then ( -- caso della flag completa
+	result = new HashTable from apply(keys result, l -> (l,apply(k+1, i -> new HashTable from {(l,1)})));
+	)
+    else (
+	result = multipleSymmetricPowerLie(k,result,RP); 
+	result = new MutableHashTable from result;
+	for v in keys result do (
+	    result#v = join(result#v, k - #(result#v) + 1 : new HashTable from {});
+	    );
+	result = new HashTable from result;
+	);
+    len := #M;
+    newResult := new MutableHashTable;
+    -- caso con un solo addendo
+    if len == 1 then (
+	m = m#0;
+	w := M#0;
+	j := 0;
+	E := homogeneousVectorBundle({M'#j},{1},X);
+	--l1 = (M'#j)^LX'; -- componente del line bundle
+	rE := rank E;
+	newResult#w = {structureSheaf(X)};
+	for i from 1 to k do (
+	    T := new MutableHashTable;
+	    S := homogeneousVectorBundle({},{},X);
+	    if keys(result#w)#i == {} then E' := S;
+	    if keys(result#w)#i =!= {} then (
+		d := binomial(rE+i-1,i-1)*chern(1,E)/binomial(rE+i-1,i); 
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#w)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#w)#i)#t
+		    else T#(l') = ((result#w)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' = homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		--if rank E' =!= binomial(rE+i-1,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		--if chern(1,E') =!=  binomial(rE+i-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		);
+	    -- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+	    newResult#w = newResult#w | {E'};
+	    ListBundles := new MutableHashTable from {};
+	    L := apply(partitions(i,m), s -> conjugate s);
+	    for l in L do (
+		l' := join(toList l, m - #l : 0);
+		ListBundles#(l') = tensorProduct (apply(l', s -> (newResult#w)#s));
+		);
+	    ListBundles = new HashTable from ListBundles;
+	    N := kunnethPartitions(i,m);
+	    N = new HashTable from (tally N);
+	    for g in keys N do (
+		for i from 1 to N#g do (
+		    S = S + ListBundles#g;
+		    );
+		);	
+	    output = output | {S};
+	    );
+	return join(output, k - #output + 1 : homogeneousVectorBundle({},{},X));
+	);
+    -- caso con piu' addendi
+    powers := {};
+    for j from 0 to len -1 do (
+	output := {structureSheaf(X)};
+	m' := m#j;
+	w := M#j;
+	E := homogeneousVectorBundle({M'#j},{1},X);
+	--l1 = (M'#j)^LX'; -- componente del line bundle
+	rE := rank E;
+	newResult#w = {structureSheaf(X)};
+	for i from 1 to k do (
+	    T := new MutableHashTable;
+	    S := homogeneousVectorBundle({},{},X);
+	    if keys(result#w)#i =!= {} then (
+		d := binomial(rE+i-1,i-1)*chern(1,E)/binomial(rE+i-1,i);
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#w)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#w)#i)#t
+		    else T#(l') = ((result#w)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		--if rank E' =!= binomial(rE,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		--if chern(1,E') =!=  binomial(rE-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		);
+	    if keys(result#w)#i == {} then E' = S;
+	    -- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+	    newResult#w = newResult#w | {E'};
+	    ListBundles := new MutableHashTable from {};
+	    L := apply(partitions(i,m'), s -> conjugate s);
+	    for l in L do (
+		l' := join(toList l, m' - #l : 0);
+		ListBundles#(l') = tensorProduct (apply(l', s -> (newResult#w)#s));
+		);
+	    ListBundles = new HashTable from ListBundles;
+	    N := kunnethPartitions(i,m');
+	    N = new HashTable from (tally N);
+	    for g in keys N do (
+		for i from 1 to N#g do (
+		    S = S + ListBundles#g;
+		    );
+		);	
+	    output = output | {S};
+	    );
+	powers = powers | {join(output, k - #output + 1 : homogeneousVectorBundle({},{},X))};
+	);
+    -*
+    powers := {};
+    for j from 0 to len - 1 do (
+	E := homogeneousVectorBundle({M'#j},{1},X);
+	l := M#j;
+	--l1 := (M'#j)^LX'; -- componente del line bundle
+	rE := rank E;
+	newResult#l = {structureSheaf(X)};
+	for i from 1 to k do (
+	    T := new MutableHashTable;
+	    S := homogeneousVectorBundle({},{},X);
+	    if keys (result#l)#i =!= {} then (
+		d := binomial(rE+i-1,i-1)*chern(1,E)/binomial(rE+i-1,i); 
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#l)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#l)#i)#t
+		    else T#(l') = ((result#l)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		--if rank E' =!= binomial(rE+i-1,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		--if chern(1,E') =!=  binomial(rE+i-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		);
+	    if keys (result#l)#i == {} then E' = S;
+	    -- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+	    newResult#l = newResult#l | {E'};
+	    );
+	);
+    newResult = new HashTable from newResult;
+    powers := values newResult;
+    output = {structureSheaf,B};
+    for j from 2 to k do (
+	--ListBundles := new MutableHashTable from {};
+	for i from 1 to j do (
+	    L := compositions(len,i);
+	    
+	    for l in L do (
+		ListBundles#l = tensorProduct (apply(0..#l-1, s -> (powers#s)#(l#s)));
+		);
+	    ListBundles = new HashTable from ListBundles;
+	    for l in L do (
+		S = S + ListBundles#l;
+		);
+	    
+	    for l in L do (
+		S = S + tensorProduct (apply(0..#l-1, s -> (powers#s)#(l#s)));
+		);
+	    );
+	output = output | {S};
+	);	
+    return output;
+    )
+    *-
+    output = {structureSheaf(X),B};
+    for j from 2 to k do (
+	S := homogeneousVectorBundle({},{},X);
+	L := compositions(len,j);
+	for l in L do (
+	    S = S + tensorProduct (apply(toList(0..#l-1), s -> (powers#s)#(l#s)));
+	    );
+	output = output | {S};
+	);
+    return join(output, k - #output + 1 : {homogeneousVectorBundle({},{},X)});
+    )
+
+
+-*
+    else (
+	m := B#"multiplicities";
+	M := B#"parabolicWeights";
+	M' := B#"weights";
+	result := new HashTable from pack (mingle (M,m),2);
+	result = multipleSymmetricPowerLie(k,result,RP);
+	len := #M;
+	newResult := new MutableHashTable;
+	--powers = apply(0..len-1, i -> multipleSymmetricPower(k,homogeneousVectorBundle({(B#"weights")#i},{(B#"multiplicities")#i},X)));
+	for j from 0 to len - 1 do (
+	    E := homogeneousVectorBundle({M'#j},{1},X);
+	    l := M#j;
+	    l1 := (M'#j)^LX'; -- componente del line bundle
+	    rE := rank E;
+	    newResult#l = {structureSheaf(X)};
+	    for i from 1 to k do (
+		T := new MutableHashTable;
+		d := binomial(rE+i-1,i-1)*chern(1,E)/binomial(rE+i-1,i); 
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#l)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#l)#i)#t
+		    else T#(l') = ((result#l)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		if rank E' =!= binomial(rE+i-1,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		if chern(1,E') =!=  binomial(rE+i-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		-- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+ 		newResult#l = newResult#l | {E'};
+		);
+	    );
+	newResult = new HashTable from newResult;
+	if len == 1 then (
+	    m = m#0;
+	    w := M#0;
+	    for j from 1 to k do (
+		S := homogeneousVectorBundle({},{},X);
+		ListBundles := new MutableHashTable from {};
+		L := apply(partitions(j,m), i -> conjugate i);
+		for l in L do (
+		    l' := join(toList l, m - #l : 0);
+		    ListBundles#(l') = tensorProduct (apply(l', i -> (newResult#w)#i));
+		    );
+		ListBundles = new HashTable from ListBundles;
+		N := kunnethPartitions(j,m);
+		N = new HashTable from (tally N);
+		for g in keys N do (
+		    for i from 1 to N#g do (
+			S = S + ListBundles#g;
+			);
+		    );	
+		output = output | {S};
+		);
+	    return output;
+	    )
+	else (
+	    powers := toSequence values newResult;
+	    for j from 1 to k do (
+		S := homogeneousVectorBundle({},{},X);
+		ListBundles := new MutableHashTable from {};
+		L := compositions(len,j);
+		for l in L do (
+		    ListBundles#l = tensorProduct (apply(0..#l-1, i -> (powers#i)#(l#i)));
+		    );
+		ListBundles = new HashTable from ListBundles;
+		for l in L do (
+		    S = S + ListBundles#l;
+		    );	
+		output = output | {S};
+		);
+	    return output;
+	    );
+	);
+*-
+
+-- data A->B->C restituisce la lista {V^kA, V^k-1A B,V^k-2A S^2B,...,A S^k-1B,V^kB} di cui S^kC è il coker
+-- chiaramente sto supponendo di avere una mappa iniettiva da A verso B
+cokernelSym = method();
+cokernelSym (ZZ,HomogeneousVectorBundle,HomogeneousVectorBundle) := (k,A,B) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := A#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    LX := sort toList ((set toList(1..rank R)) - (P#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    rA := rank A;
+    rB := rank B;
+    rC := rB - rA;
+    if k == 0 then return structureSheaf(X);
+    if k == 1 then return {A,B};
+    if k > rC then return homogeneousVectorBundle({},{},X);
+    -- costruiamo le potenze esterne di B in modo intelligente
+    -- teniamo in memoria i conti già fatti
+    outputA := multipleExteriorPower(k,A);
+    outputB := multipleSymmetricPower(k,B);
+    comp := compositions(2,k);
+    output := {};
+    for m in comp do (
+	output = output | {tensorProduct(outputA#(m#0),outputB#(m#1))};
+	);
+    return output;
+    )
+
+
+-- data A->B->C restituisce la lista {S^kB,S^k-1B C,S^k-2B V^2C,..V^kC} di cu S^kA è il ker
+-- chiaramente sto supponendo di avere una mappa suriettiva da B verso C
+kernelSym = method();
+kernelSym (ZZ,HomogeneousVectorBundle,HomogeneousVectorBundle) := (k,B,C) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := B#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    LX := sort toList ((set toList(1..rank R)) - (P#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    rB := rank B;
+    rC := rank C;
+    rA := rB - rC;
+    if k == 0 then return structureSheaf(X);
+    if k == 1 then return {B,C};
+    if k > rA then return homogeneousVectorBundle({},{},X);
+    -- costruiamo le potenze esterne di B in modo intelligente
+    -- teniamo in memoria i conti già fatti
+    outputC := multipleExteriorPower(k,C);
+    outputB := multipleSymmetricPower(k,B);
+    comp := compositions(2,k);
+    output := {};
+    for m in comp do (
+	output = output | {tensorProduct(outputB#(m#0),outputC#(m#1))};
+	);
+    return output;
+    )
+
+--------------------------------------------------------------------------------------------------
+
+exteriorPower (ZZ,HomogeneousVectorBundle) := o -> (n,E) -> (
+    X := E#"underlyingVariety";
+    if n == 0 then return structureSheaf(X);
+    if n == 1 then return E;
+    r := rank E;
+    if n == r then return determinant E;
+    if n > r then return homogeneousVectorBundle({},{},X);
+    if  n > r/2 then return tensorProduct(determinant E,exteriorPower(r-n,dual E));
+    R := X#"rootSystem";
+    S := homogeneousVectorBundle({},{},X);
+    RP := E#"rootSystem";
+    Ttemp := new MutableHashTable;
+    T := new MutableHashTable;
+    LX := sort toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    if E#"irreducible" then (
+	l := (E#"parabolicWeights")#0; -- componente senza line bundle
+	--l1 := ((E#"weights")#0)^LX'; -- componente del line bundle
+	if rank RP == 0 then Ttemp = new HashTable from {(l,1)} -- caso flag completa
+	else Ttemp = new HashTable from exteriorPower(n,l,RP);
+	d := binomial(r-1,n-1)*chern(1,E)/binomial(r,n); -- mail di Vladimiro 9/7/25
+	-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+	for t in keys Ttemp do (
+	    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+	    c := lift(d-chern(1,E')/rank(E'),ZZ);
+	    l' := weight(R,mixWeights(t,entries c,LX));
+	    --if T#?(l') then T#(l') = T#(l') + Ttemp#t
+	    --else T#(l') = Ttemp#t;
+	    T#(l') = Ttemp#t;
+	    );
+	T = new HashTable from T;
+	E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+	--if rank E' =!= binomial(r,n) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+	--if chern(1,E') =!=  binomial(r-1,n-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+	return E';
+	)
+    else if #(E#"weights") == 1 then (
+	m := (E#"multiplicities")#0;
+	E' = homogeneousVectorBundle(E#"weights",{1},X);
+	L := apply(partitions(n,m), k -> conjugate k);
+	ListBundles := new MutableHashTable from {};
+	listExt := multipleExteriorPower(n, E');
+	for l in L do (
+	    l' := join(toList l, m - #l : 0);
+	    ListBundles#(l') = tensorProduct (apply(toList l, i -> listExt#i));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	M := kunnethPartitions(n,m);
+	M = new HashTable from (tally M);
+	for g in keys M do (
+	    for i from 1 to M#g do (
+		S = S + ListBundles#g;
+		);
+	    );	
+	return S;
+	-*
+	m := (E#"multiplicities")#0;
+	E' = homogeneousVectorBundle(E#"weights",{1},X);
+	L := apply(partitions(n,m), k -> conjugate k);
+	ListBundles := new MutableHashTable from {};
+	for l in L do (
+	    l' := join(toList l, m - #l : 0);
+	    ListBundles#(l') = tensorProduct (apply(toList l, i -> exteriorPower(i,E')));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	M := kunnethPartitions(n,m);
+	M = new HashTable from (tally M);
+	for g in keys M do (
+	    for i from 1 to M#g do (
+		S = S + ListBundles#g;
+		);
+	    );	
+	return S;
+	*-
+	)
+    else (
+	k := #(E#"weights");
+	L = compositions(k,n);
+	ListBundles = new MutableHashTable from {};
+	listExt = for i from 0 to k-1 list (
+	    multipleExteriorPower(n,homogeneousVectorBundle({(E#"weights")#i},{(E#"multiplicities")#i},X))
+	    );
+	for l in L do (
+	    ListBundles#l = tensorProduct (apply(toList(0..#l-1), i -> (listExt#i)#(l#i)));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	for l in L do (
+	    S = S + ListBundles#l;
+	    );	
+	return S;
+	);
+    )
+
+
+
+-- funzione induttiva che calcola le molteplicità delle partizioni della formula di kunneth
+kunnethPartitions = method();
+kunnethPartitions (ZZ,ZZ) := (n,m) -> (
+    if m == 1 then return {{n}};
+    memory := {};
+    for k from 0 to n do (
+	R := kunnethPartitions(n-k,m-1);
+	for l in R do (
+	    memory = memory | {flatten kunnethPartitions(k,1) | flatten l};
+	    );
+	);
+    apply(memory, i -> reverse sort i)
+    );
+
+
+-- ritorna la lista delle potenze esterne di B da 0 a k, calcolate in modo induttivo
+multipleExteriorPower = method();
+multipleExteriorPower(ZZ, HomogeneousVectorBundle) := (k,B) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := B#"underlyingVariety";
+    if k == 0 then return {structureSheaf(X)};
+    if k == 1 then return {structureSheaf(X),B};
+    R := X#"rootSystem";
+    S := homogeneousVectorBundle({},{},X);
+    RP := B#"rootSystem";
+    LX := sort toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    rB := rank B;
+    output := {structureSheaf(X)};
+    -- costruiamo le potenze esterne di B in modo intelligente
+    -- teniamo in memoria i conti già fatti
+    if B#"irreducible" then (
+	l := (B#"parabolicWeights")#0; -- componente senza line bundle
+	--l1 := ((B#"weights")#0)^LX'; -- componente del line bundle
+	if rank RP == 0 then Ttemp := apply(k+1, i -> new HashTable from {(l,1)}) -- caso flag completa
+	else Ttemp = multipleExteriorPowerLie(k, l, RP);
+	for i from 1 to min(k, rB) do (
+	    T := new MutableHashTable;
+	    d := binomial(rB-1,i-1)*chern(1,B)/binomial(rB,i); 
+	    -- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+	    for t in keys Ttemp#i do (
+		B' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		c := lift(d-chern(1,B')/rank(B'),ZZ);
+		l' := weight(R,mixWeights(t,entries c,LX));
+		if T#?(l') then T#(l') = T#(l') + (Ttemp#i)#t
+		else T#(l') = (Ttemp#i)#t;
+		);
+	    T = new HashTable from T;
+	    B' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+	    --if rank B' =!= binomial(rB,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+	    --if chern(1,B') =!=  binomial(rB-1,i-1)*chern(1,B) then error "sto sbagliando nel calcolare la classe di chern";
+	    output = output | {B'};
+	    );
+	return join(output, k - #output + 1 : homogeneousVectorBundle({},{},X));
+	);
+    -- caso non irriducibile
+    m := B#"multiplicities";
+    M := B#"parabolicWeights";
+    M' := B#"weights";
+    result := new HashTable from pack (mingle (M,m),2);
+    if rank RP == 0 then ( -- caso della flag completa
+	result = new HashTable from apply(keys result, l -> (l,apply(max(rB+1,k+1), i -> new HashTable from {(l,1)})));
+	)
+    else (
+	result = multipleExteriorPowerLie(k,result,RP); 
+	result = new MutableHashTable from result;
+	for v in keys result do (
+	    result#v = join(result#v, k - #(result#v) + 1 : new HashTable from {});
+	    );
+	result = new HashTable from result;
+	);
+    len := #M;
+    newResult := new MutableHashTable;
+    -- caso con un solo addendo
+    if len == 1 then (
+	m = m#0;
+	w := M#0;
+	j := 0;
+	E := homogeneousVectorBundle({M'#j},{1},X);
+	--l1 = (M'#j)^LX'; -- componente del line bundle
+	rE := rank E;
+	newResult#w = {structureSheaf(X)};
+	for i from 1 to min(k, rB) do (
+	    T := new MutableHashTable;
+	    S := homogeneousVectorBundle({},{},X);
+	    if keys(result#w)#i =!= {} then (
+		d := binomial(rE-1,i-1)*chern(1,E)/binomial(rE,i); 
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#w)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#w)#i)#t
+		    else T#(l') = ((result#w)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		--if rank E' =!= binomial(rE,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		--if chern(1,E') =!=  binomial(rE-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		);
+	    if keys(result#w)#i == {} then E' = S;
+	    -- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+	    newResult#w = newResult#w | {E'};
+	    ListBundles := new MutableHashTable from {};
+	    L := apply(partitions(i,m), s -> conjugate s);
+	    for l in L do (
+		l' := join(toList l, m - #l : 0);
+		ListBundles#(l') = tensorProduct (apply(l', s -> (newResult#w)#s));
+		);
+	    ListBundles = new HashTable from ListBundles;
+	    N := kunnethPartitions(i,m);
+	    N = new HashTable from (tally N);
+	    for g in keys N do (
+		for i from 1 to N#g do (
+		    S = S + ListBundles#g;
+		    );
+		);	
+	    output = output | {S};
+	    );
+	return join(output, k - #output + 1 : homogeneousVectorBundle({},{},X));
+	);
+    -- caso con piu' addendi
+    powers := {};
+    for j from 0 to len -1 do (
+	output := {structureSheaf(X)};
+	m' := m#j;
+	w := M#j;
+	E := homogeneousVectorBundle({M'#j},{1},X);
+	--l1 = (M'#j)^LX'; -- componente del line bundle
+	rE := rank E;
+	newResult#w = {structureSheaf(X)};
+	for i from 1 to k do (
+	    T := new MutableHashTable;
+	    S := homogeneousVectorBundle({},{},X);
+	    if i <= rE and keys(result#w)#i =!= {} then (
+		d := binomial(rE-1,i-1)*chern(1,E)/binomial(rE,i);
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#w)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#w)#i)#t
+		    else T#(l') = ((result#w)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		--if rank E' =!= binomial(rE,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		--if chern(1,E') =!=  binomial(rE-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		);
+	    if i > rE or keys(result#w)#i == {} then E' = S;
+	    -- questo i > rE è stato aggiunto (mail fabio 15/04/2026)
+	    -- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+	    newResult#w = newResult#w | {E'};
+	    ListBundles := new MutableHashTable from {};
+	    L := apply(partitions(i,m'), s -> conjugate s);
+	    for l in L do (
+		l' := join(toList l, m' - #l : 0);
+		ListBundles#(l') = tensorProduct (apply(l', s -> (newResult#w)#s));
+		);
+	    ListBundles = new HashTable from ListBundles;
+	    N := kunnethPartitions(i,m');
+	    N = new HashTable from (tally N);
+	    for g in keys N do (
+		for i from 1 to N#g do (
+		    S = S + ListBundles#g;
+		    );
+		);	
+	    output = output | {S};
+	    );
+	powers = powers | {join(output, k - #output + 1 : homogeneousVectorBundle({},{},X))};
+	);
+    -*
+    for j from 0 to len - 1 do (
+	E := homogeneousVectorBundle({M'#j},{1},X);
+	l := M#j;
+	--l1 := (M'#j)^LX'; -- componente del line bundle
+	rE := rank E;
+	newResult#l = {structureSheaf(X)};
+	for i from 1 to min(k, rB) do (
+	    T := new MutableHashTable;
+	    S := homogeneousVectorBundle({},{},X);
+	    if keys (result#l)#i =!= {} then (
+		d := binomial(rE-1,i-1)*chern(1,E)/binomial(rE,i); 
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#l)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#l)#i)#t
+		    else T#(l') = ((result#l)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		--if rank E' =!= binomial(rE,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		--if chern(1,E') =!=  binomial(rE-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		);
+	    if keys (result#l)#i == {} then E' = S;
+	    -- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+	    newResult#l = newResult#l | {E'};
+	    );
+	);
+    newResult = new HashTable from newResult;
+    powers := values newResult;
+    *-
+    output = {structureSheaf(X),B};
+    for j from 2 to k do (
+	S := homogeneousVectorBundle({},{},X);
+	L := compositions(len,j);
+	for l in L do (
+	    S = S + tensorProduct (apply(toList (0..#l-1), s -> (powers#s)#(l#s)));
+	    );
+	output = output | {S};
+	);
+    return join(output, k - #output + 1 : {homogeneousVectorBundle({},{},X)});
+    )
+
+-*
+	newResult = new HashTable from newResult;
+	if len == 1 then (
+	    m = m#0;
+	    w := M#0;
+	    for j from 1 to k do (
+		S := homogeneousVectorBundle({},{},X);
+		ListBundles := new MutableHashTable from {};
+		L := apply(partitions(j,m), i -> conjugate i);
+		for l in L do (
+		    l' := join(toList l, m - #l : 0);
+		    ListBundles#(l') = tensorProduct (apply(l', i -> (newResult#w)#i));
+		    );
+		ListBundles = new HashTable from ListBundles;
+		N := kunnethPartitions(j,m);
+		N = new HashTable from (tally N);
+		for g in keys N do (
+		    for i from 1 to N#g do (
+			S = S + ListBundles#g;
+			);
+		    );	
+		output = output | {S};
+		);
+	    return output;
+	    )
+	else (
+	    powers := toSequence values newResult;
+	    for j from 1 to k do (
+		S := homogeneousVectorBundle({},{},X);
+		ListBundles := new MutableHashTable from {};
+		L := compositions(len,j);
+		for l in L do (
+		    ListBundles#l = tensorProduct (apply(0..#l-1, i -> (powers#i)#(l#i)));
+		    );
+		ListBundles = new HashTable from ListBundles;
+		for l in L do (
+		    S = S + ListBundles#l;
+		    );	
+		output = output | {S};
+		);
+	    return output;
+	    );
+	);
+    )
+
+
+m := B#"multiplicities";
+	M := B#"parabolicWeights";
+	M' := B#"weights";
+	result := new HashTable from pack (mingle (M,m),2);
+	result = multipleExteriorPowerLie(k,result,RP);
+	len := #M;
+	newResult := new MutableHashTable;
+	for j from 0 to len - 1 do (
+	    E := homogeneousVectorBundle({M'#j},{1},X);
+	    l := M#j;
+	    l1 := (M'#j)^LX'; -- componente del line bundle
+	    rE := rank E;
+	    newResult#l = {structureSheaf(X)};
+	    for i from 1 to k do (
+		T := new MutableHashTable;
+		d := binomial(rE+i-1,i-1)*chern(1,E)/binomial(rE+i-1,i); 
+		-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+		for t in keys (result#l)#i do (
+		    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+		    c := lift(d-chern(1,E')/rank(E'),ZZ);
+		    l' := weight(R,mixWeights(t,entries c,LX));
+		    if T#?(l') then T#(l') = T#(l') + ((result#l)#i)#t
+		    else T#(l') = ((result#l)#i)#t;
+		    );
+		T = new HashTable from T;
+		E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+		if rank E' =!= binomial(rE+i-1,i) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+		if chern(1,E') =!=  binomial(rE+i-1,i-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+		-- fino a qui ho trasformato tutti le potenze del primo fibrato in vector bundles
+		newResult#l = newResult#l | {E'};
+		);
+*-
+	    
+-- calcola i fattori che costituiscono la filtrazione per calcolare la potenza wedge
+-- di una lista di fibrati che rappresenta il filtration bundle E1->E->F0
+-- questa convenzione è quella che usa macaulay per l'ordine delle composizioni in compositions
+-- quello che restituisce è il filtration bundle che ha come fattori le potenze dei fattori di E
+-- date da compositions(numero di fattori di E,k)
+centralMemberWedge = method();
+centralMemberWedge (ZZ,List) := (k,S) -> (
+    X := (S#0)#"underlyingVariety";
+    C := compositions(length S,k);
+    F := apply(C, c -> tensorProduct(for i from 0 to length S - 1 list exteriorPower(c#i,S#i)));
+    filtrationBundle(F,X)
+    )
+
+
+-- data A->B->C restituisce la lista {S^kA, S^k-1A B,S^k-2A V^2B,...,A V^k-1B,V^kB} di cu V^kC è il coker
+-- chiaramente sto supponendo di avere una mappa iniettiva da A verso B
+cokernelWedge = method();
+cokernelWedge (ZZ,HomogeneousVectorBundle,HomogeneousVectorBundle) := (k,A,B) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := A#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    LX := sort toList ((set toList(1..rank R)) - (P#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    rA := rank A;
+    rB := rank B;
+    rC := rB - rA;
+    if k == 0 then return structureSheaf(X);
+    if k == 1 then return {A,B};
+    if k > rC then return homogeneousVectorBundle({},{},X);
+    if  k > rC/2 then (
+	-- calcolo il determinante di C (esatto, non dipende dalla mappa)
+	c := entries (chern(1,B) - chern(1,A));
+	P = sort toList P#"parabolic";
+	L := {};
+	for i from 1 to rank R do (
+	    if not isMember(i,P) then (
+		L = L | {c#0};
+		c = drop(c,1);
+		)
+	    else (
+		L = L | {0};
+		);
+	    );
+	detC := homogeneousVectorBundle({weight(R,L)},{1},X);
+	-- se mi viene chiesta la potenza esterna massima di C potrei restituire il determinante,
+	-- ma sarebbe diverso da quello che è il naturale output di questo metodo
+	-- if k == rC then return detC;
+	return apply(kernelWedge(rC-k,dual B, dual A), f -> tensorProduct(detC,f));
+	);
+    -- costruiamo le potenze esterne di B in modo intelligente
+    -- teniamo in memoria i conti già fatti
+    outputB := multipleExteriorPower(k,B);
+    outputA := multipleSymmetricPower(k,A);
+    comp := compositions(2,k);
+    output := {};
+    for m in comp do (
+	output = output | {tensorProduct(outputA#(m#0),outputB#(m#1))};
+	);
+    return output;
+    )
+
+
+-- data A->B->C restituisce la lista {V^kB,V^k-1B C,V^k-2B S^2C,..S^kC} di cu V^kA è il ker
+-- chiaramente sto supponendo di avere una mappa suriettiva da B verso C
+kernelWedge = method();
+kernelWedge (ZZ,HomogeneousVectorBundle,HomogeneousVectorBundle) := (k,B,C) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := B#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    LX := sort toList ((set toList(1..rank R)) - (P#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    rB := rank B;
+    rC := rank C;
+    rA := rB - rC;
+    if k == 0 then return structureSheaf(X);
+    if k == 1 then return {B,C};
+    if k > rA then return homogeneousVectorBundle({},{},X);
+    if  k > rA/2 then (
+	-- calcolo il determinante di A (esatto, non dipende dalla mappa)
+	c := entries (chern(1,B) - chern(1,C));
+	P = sort toList P#"parabolic";
+	L := {};
+	for i from 1 to rank R do (
+	    if not isMember(i,P) then (
+		L = L | {c#0};
+		c = drop(c,1);
+		)
+	    else (
+		L = L | {0};
+		);
+	    );
+	detA := homogeneousVectorBundle({weight(R,L)},{1},X);
+	-- se mi viene chiesta la potenza esterna massima di A potrei restituire il determinante,
+	-- ma sarebbe diverso da quello che è il naturale output di questo metodo
+	-- if k == rA then return detA;
+	return apply(cokernelWedge(rA-k,dual B, dual C), f -> tensorProduct(detA,f));
+	);
+    -- costruiamo le potenze esterne di B in modo intelligente
+    -- teniamo in memoria i conti già fatti
+    outputB := multipleExteriorPower(k,B);
+    outputC := multipleSymmetricPower(k,C);
+    comp := compositions(2,k);
+    output := {};
+    for m in comp do (
+	output = output | {tensorProduct(outputB#(m#0),outputC#(m#1))};
+	);
+    return output;
+    )
+    
+    
+exteriorPower (ZZ,FiltrationBundle) := o -> (n,E) -> (
+    X := E#"underlyingVariety";
+    r := rank E;
+    if n == 0 then return structureSheaf(X);
+    if n == 1 then return E;
+    if n > r then return homogeneousVectorBundle({},{},X);
+    if n == r then return determinant E;
+    if  n > r/2 then return tensorProduct(exteriorPower(r-n,dual E),determinant E);
+    centralMemberWedge (n,E#"factors")
+    )
+
+///TEST
+R=rootSystemA(4); 
+P = newParabolic(R,set{1,2,4}); -- Gr(2,5)
+X = homogeneousVariety(R,P);
+l=weight(R,{1,0,0,0}); -- Q
+E=homogeneousVectorBundle({l},{1},X);
+time AE = exteriorPower(3,E); -- A^3Q
+peek AE
+l=weight(R,{0,0,1,0}); -- O(1)
+E=homogeneousVectorBundle({l},{1},X);
+rank E
+///
+
+multipleExteriorPower(ZZ, FiltrationBundle) := (k,B) -> (
+    if k < 0 then error "the power must be a non-negative integer";
+    X := B#"underlyingVariety";
+    S := B#"factors";
+    if k == 0 then return {structureSheaf(X)};
+    if k == 1 then return {structureSheaf(X),B};
+    -- costruiamo le potenze esterne di B in modo intelligente
+    -- teniamo in memoria i conti già fatti
+    output := {structureSheaf(X),B}; 
+    S = apply(S, s -> multipleExteriorPower(k,s)); -- faccio tutti i conti pesanti qui
+    for j from 2 to k do (
+	C := compositions(length S,j);
+	F := apply(C, c -> tensorProduct(for i from 0 to length S - 1 list (S#i)_(c#i)));
+	output = output | {filtrationBundle(F,X)};
+	);
+    output
+    )
+
+
+
+
+---------------------------------------------------------------------------------------------
+
+
+-- calcola il funtore di Schur S_mu(E)
+plethysm = method();
+plethysm (List,HomogeneousVectorBundle) := (mu,E) -> (
+    if #mu == 1 then return symmetricPower(mu#0,E);
+    if all(mu, i -> i == 1) then return new exteriorPower(#mu,E);
+    X := E#"underlyingVariety";
+    r := rank E;
+    S := homogeneousVectorBundle({},{},X);
+    if #mu > r then return S;
+    mu = mu | apply(r-#mu, i -> 0); -- rendo la partizione della lunghezza giusta
+    -- calcolo il rango del fibrato che devo ottenere
+    rS := lift(product(flatten apply(r, j -> apply(j, i -> (mu_i - mu_j + j - i)/(j-i)))),ZZ);
+    R := X#"rootSystem";
+    RP := E#"rootSystem";
+    Ttemp := new MutableHashTable;
+    T := new MutableHashTable;
+    LX := sort toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")); -- Lambda_X
+    --LX' := sort apply(LX, t -> t-1);
+    if E#"irreducible" then (
+	l := (E#"parabolicWeights")#0; -- componente senza line bundle
+	--l1 := ((E#"weights")#0)^LX'; -- componente del line bundle
+	Ttemp = plethysmLie(mu,l,RP);
+	Ttemp = new HashTable from Ttemp;
+	-- slope (S_mu(E)) = |mu|slope(E)
+	d := sum(mu) * chern(1,E)/rS;
+	--d := binomial(r-1,n-1)*chern(1,E)/binomial(r,n); -- 
+	-- questo d deve essere la SLOPE di ogni addendo che calcolo con le rappresentazioni
+	for t in keys Ttemp do (
+	    E' := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"),{1},X);
+	    c := lift(d-chern(1,E')/rank(E'),ZZ);
+	    l' := weight(R,mixWeights(t,entries c,LX));
+	    --if T#?(l') then T#(l') = T#(l') + Ttemp#t
+	    --else T#(l') = Ttemp#t;
+	    T#(l') = Ttemp#t;
+	    );
+	T = new HashTable from T;
+	E' := homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
+	--if rank E' =!= binomial(r,n) then error "sto sbagliando nel calcolare il prodotto tensore di rappresentazioni";
+	--if chern(1,E') =!=  binomial(r-1,n-1)*chern(1,E) then error "sto sbagliando nel calcolare la classe di chern";
+	return E';
+	)
+    else error "schur functors are computed only for irreducible vector bundles";
+    )
+-*    else if #(E#"weights") == 1 then (
+	m := (E#"multiplicities")#0;
+	E' = homogeneousVectorBundle(E#"weights",{1},X);
+	L := apply(partitions(n,m), k -> conjugate k);
+	ListBundles := new MutableHashTable from {};
+	listExt := multipleExteriorPower(n, E');
+	for l in L do (
+	    l' := join(toList l, m - #l : 0);
+	    ListBundles#(l') = tensorProduct (apply(toList l, i -> listExt#i));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	M := kunnethPartitions(n,m);
+	M = new HashTable from (tally M);
+	for g in keys M do (
+	    for i from 1 to M#g do (
+		S = S + ListBundles#g;
+		);
+	    );	
+	return S;
+	)
+    else (
+	k := #(E#"weights");
+	L = compositions(k,n);
+	ListBundles = new MutableHashTable from {};
+	listExt = for i from 0 to k-1 list (
+	    multipleExteriorPower(n,homogeneousVectorBundle({(E#"weights")#i},{(E#"multiplicities")#i},X))
+	    );
+	for l in L do (
+	    ListBundles#l = tensorProduct (apply(toList(0..#l-1), i -> (listExt#i)#(l#i)));
+	    );
+	ListBundles = new HashTable from ListBundles;
+	for l in L do (
+	    S = S + ListBundles#l;
+	    );	
+	return S;
+	);
+    )
+*-
+
+
+
+--------------------------------------------------------------------------------------------
+
+
+-- crea il complesso di Koszul di Y=(X,F) come lista di fibrati {E_0=O_X,E_1=F',...,E_r=det(F')}
+koszul (HomogeneousVariety,HomogeneousVectorBundle) := (X,F) -> (
+    if F#?"koszul" then (
+	return F#"koszul";
+	)
+    else (
+	F' := dual F;
+	D := determinant F';
+	r := rank F;
+	S := {D};
+	S' := {structureSheaf X};
+	-*
+	elapsedTime(
+	extTemp := for i from 0 to floor((r-1)/2) list (
+	    exteriorPower(i,F)
+	    );)
+	*-
+	extTemp := multipleExteriorPower(floor((r-1)/2),F);
+	for i from 1 to floor((r-1)/2) do (
+	    --extTemp = exteriorPower(i,F);
+	    S = S|{tensorProduct(extTemp#i,D)};
+	    S' = {dual extTemp#i}|S';
+	    );
+	if even r then S = S|{exteriorPower(lift(r/2,ZZ),F')}|S';
+	if odd r then S = S|S';
+	F#"koszul" = reverse S;
+	return F#"koszul";
+	);
+    )
+
+
+---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+determinantCoeff = method();
+determinantCoeff(RootSystem,ZZ,Vector) := (R,k,v) -> (
+    w := new MutableList from rank R:0;
+    w#(k-1) = 1;
+    w = weight(R,toList w);
+    return scalarProduct(R,weight(R,entries v),w)/scalarProduct(R,w,w);
+    );
+
+determinant HomogeneousVectorBundle := o -> E -> (
+    X := E#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    P0 := P#"parabolic";
+    if E#"irreducible" then (
+	r := rank E;
+	if r == 1 then return E;
+	t := (E#"weights")#0;
+	indexes := flatten {0,sort toList(set(1..rank(R))-P0),1+rank R};
+	l := new MutableList from (rank R:0);
+	for i from 1 to #indexes - 2 do (
+	    L := sort toList connectedComponent(R,P0,indexes#i);
+	    pos := position(L, l -> l == indexes#i);
+	    R' := rootSystem(R,parabolic(R,set L));
+	    L = L/(i -> i -1 );
+	    coeff := determinantCoeff(R',pos+1, t^L);
+	    l#(indexes#i-1) = lift(coeff*r,ZZ);
+	    );
+	l = weight(R,toList l);
+	return homogeneousVectorBundle({l},{1},X);
+	-*
+	r := rank E;
+	if r == 1 then return E;
+	X := E#"underlyingVariety";
+	R := X#"rootSystem";
+	P := X#"parabolicSubgroup";
+	t := (E#"weights")#0;
+	indexes := flatten {0,sort toList(set(1..rank(R))-P#"parabolic"),1+rank R};
+	l := new MutableList from (rank R:0);
+	for i from 1 to #indexes - 2 do (
+	    R' := rootSystem(R,parabolic(R,set(indexes#(i-1)+1..indexes#(i+1)-1))); 
+	    coeff := determinantCoeff(R',indexes#(i)-indexes#(i-1), t^(toList(indexes#(i-1)..indexes#(i+1)-2)));
+	    l#(indexes#i-1) = lift(coeff*r,ZZ);
+	    );
+	l = weight(R,toList l);
+	return homogeneousVectorBundle({l},{1},X);
+	*-
+	)
+    else if #(E#"weights") == 1 then (	
+	t = (E#"weights")#0;
+	r = rank homogeneousVectorBundle({t},{1},X);
+	indexes = flatten {0,sort toList(set(1..rank(R))-P0),1+rank R};
+	l = new MutableList from (rank R:0);
+	for i from 1 to #indexes - 2 do (
+	    L := sort toList connectedComponent(R,P0,indexes#i);
+	    pos := position(L, l -> l == indexes#i);
+	    R' := rootSystem(R,parabolic(R,set L));
+	    L = L/(i -> i -1 );
+	    coeff := determinantCoeff(R',pos+1, t^L);
+	    l#(indexes#i-1) = lift(coeff*r,ZZ);
+	    );
+	l = weight(R,toList l);
+	return homogeneousVectorBundle({((E#"multiplicities")#0)*l},{1},X);
+	)
+    else (
+	M := {};
+	indexes = flatten {0,sort toList(set(1..rank(R))-P0),1+rank R};
+	for t in E#"weights" do (
+	    r = rank homogeneousVectorBundle({t},{1},X);
+	    l = new MutableList from (rank R:0);
+	    for i from 1 to #indexes - 2 do (
+		L := sort toList connectedComponent(R,P0,indexes#i);
+		pos := position(L, l -> l == indexes#i);
+		R' := rootSystem(R,parabolic(R,set L));
+		L = L/(i -> i -1 );
+		coeff := determinantCoeff(R',pos+1, t^L);
+		l#(indexes#i-1) = lift(coeff*r,ZZ);
+		);
+	    l = toList l;
+	    M = M | {l};
+	    );
+	M = transpose matrix M;
+	l = M * vector(E#"multiplicities");
+	return homogeneousVectorBundle({l},{1},X);
+	);
+    )
+
+
+determinant FiltrationBundle := o -> F -> (
+    c := entries chern(1,F);
+    X := F#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    P = sort toList P#"parabolic";
+    L := {};
+    for i from 1 to rank R do (
+	if not isMember(i,P) then (
+	    L = L | {c#0};
+	    c = drop(c,1);
+	    )
+	else (
+	    L = L | {0};
+	    );
+	);
+    homogeneousVectorBundle({weight(R,L)},{1},X)
+    )
+
+/// TEST
+R=rootSystemA(5); 
+P = newParabolic(R,set{2,4,5}); -- Fl(1,3,6)
+X = homogeneousVariety(P);
+dim X
+l = weight(R,{-1,0,0,0,0});
+E = homogeneousVectorBundle({l},{1},X);
+--
+R=rootSystemA(7); 
+P = newParabolic(R,set{1,3,4,6,7}); -- Fl(2,5,8)
+X = homogeneousVariety(P);
+dim X
+l = weight(R,{1,-1,0,0,0,0,0});
+E = homogeneousVectorBundle({l},{1},X);
+///
+
+
+
+
+------------------------------------------------ da WeylGroups ---------------------------------------------------------
+--(internal function) Finding the labels of the neighbors of the i-th vertex in a Dynkin diagram
+neighbors = method()
+neighbors(DynkinDiagram,ZZ) := (D,i) -> set join(D#(i-1)#0,D#(i-1)#1,D#(i-1)#2,D#(i-1)#3,D#(i-1)#4)
+
+--(internal function) Reindexing elements according to a list to obtain a coherent Dynkin diagram
+reindex=(D,L)->
+	(
+	T:=new HashTable from for i from 0 to #L-1 list L#i => i+1; 
+	new DynkinDiagram from apply(D,x->applyTable(x,z->T#z))
+	)
+
+
+
+-- dato un sistema di radici con nodi marcati da P, e dato k non in P,
+-- voglio trovare le parti di P che si attaccano a k
+connectedComponent = method();
+connectedComponent (RootSystem,Parabolic,ZZ) := (R,P0,k) ->(
+    f := P0 + set {k}; -- marco anche k
+    D := dynkinDiagram R;
+    P :=  sort toList P0;
+    test := 0; -- se questo valore è 0 allora deve rifare il giro perche ho aggiornato la componente connessa
+    vertcompolist:=set {k}; --will contain the sets of vertices di P che si attaccano a k
+    while test == 0 do (
+	test = 1;
+	for i in P do (
+	    if neighbors(D,i)*vertcompolist =!=set{} and not member(i,vertcompolist) then (
+		vertcompolist = vertcompolist + set{i};
+		test = 0;
+		);
+	    );
+	);
+    return vertcompolist;
+    );
+
+    
+--Finding the connected components of a Dynkin diagram
+myConnectedComponents=method()
+myConnectedComponents(DynkinDiagram) := (D) ->
+	(
+	vertcompolist:={}; --will contain the sets of vertices of the connected components
+	for i from 1 to #D do
+	  (
+	  verticompo:=set{i}; --set of vertices of connected component of i
+	  vertnoticompolist:={}; --list of other connected components vertices sets 
+	  for j from 0 to #vertcompolist-1 do if neighbors(D,i)*vertcompolist#j =!=set{} then 
+	    (
+	    verticompo=vertcompolist#j+verticompo;
+	    )
+	    else 
+            (
+	    vertnoticompolist=append(vertnoticompolist,vertcompolist#j);
+            );
+	  vertcompolist=append(vertnoticompolist,verticompo);
+	  );
+	vertcompolist=apply(vertcompolist,toList); --transform the connected components into lists
+	vertcompolist=apply(vertcompolist,sort); --sort each of these lists 
+	dyncompolist:=applyTable(vertcompolist,i->D#(i-1)); --make a list with the edge data of the corresponding vertices
+	--apply(dyncompolist,vertcompolist,reindex)
+	new DynkinDiagram from dyncompolist
+	)
+    
+--Finding the connected components of a Dynkin diagram
+--connectedComponents=method()
+connectedComponents(DynkinDiagram) := (D) ->
+	(
+	vertcompolist:={}; --will contain the sets of vertices of the connected components
+	for i from 1 to #D do
+	  (
+	  verticompo:=set{i}; --set of vertices of connected component of i
+	  vertnoticompolist:={}; --list of other connected components vertices sets 
+	  for j from 0 to #vertcompolist-1 do if neighbors(D,i)*vertcompolist#j =!=set{} then 
+	    (
+	    verticompo=vertcompolist#j+verticompo;
+	    )
+	    else 
+            (
+	    vertnoticompolist=append(vertnoticompolist,vertcompolist#j);
+            );
+	  vertcompolist=append(vertnoticompolist,verticompo);
+	  );
+	vertcompolist=apply(vertcompolist,toList); --transform the connected components into lists
+	vertcompolist=apply(vertcompolist,sort); --sort each of these lists 
+	dyncompolist:=applyTable(vertcompolist,i->D#(i-1)); --make a list with the edge data of the corresponding vertices
+	apply(dyncompolist,vertcompolist,reindex)
+	--new DynkinDiagram from (dyncompolist,vertcompolist)
+	)
+
+    
+--(internal function) Returning the position (in the list) of the small side of a double edge of an irreducible Dynkin diagram if it has one.
+smallSideDoubleEdge= (D)->
+	(
+	for i from 0 to #D-1 do if (D#i#2 !={}) then return({i});
+	return({});
+	) 
+
+--(internal function) Returning the position (in the list) of the big side of a double edge of an irreducible Dynkin diagram if it has one.
+bigSideDoubleEdge= (D)->
+	(
+	for i from 0 to #D-1 do if (D#i#1 !={}) then return({i});
+	return({});	
+	) 
+
+--(internal function) Testing if an irreducible Dynkin diagram has a triple edge 
+isG2= (D)->
+	(
+	for i from 0 to #D-1 do if (D#i#3 !={} or D#i#4 !={}) then return(true);
+	return(false);
+	) 
+
+--(internal function) Returning the number (ie at least 1) of the branch point of an irreducible Dynkin diagram if it has one 
+branchPoint= (D)->
+	(
+	for i from 0 to #D-1 do if (#(D#i#0)>2) then return({i+1});
+	return({});	
+	) 
+
+--(internal function) Says whether the vertex at position i (as in a list) in the Dynkin diagram D is an end point. 
+isEndPoint=(D,i)->
+	(
+	(#(D#i#0)+#(D#i#1)+#(D#i#2)<2)
+	)
+
+--Finds the indices all end points of a Dynkin diagram D
+--endVertices=method()
+endVertices(DynkinDiagram) := (D) ->
+	(
+	set for i from 0 to #D-1 list if (#(D#i#0)+#(D#i#1)+#(D#i#2)<2) then i+1 else continue
+	)
+
+
+
+
+--(internal function) Finding the type of a connected Dynkin diagram (it should not be empty)
+connectedDynkinType=method()
+connectedDynkinType(DynkinDiagram):=(D)->
+	(
+	if isG2(D) then {"G",2}
+	else
+	  (
+	  brp:=branchPoint(D);
+	  if brp=={} then
+	    (
+	    sm:=smallSideDoubleEdge(D);
+	    bg:=bigSideDoubleEdge(D);
+	    if sm=={} and bg=={} then {"A",rank(D)}
+	    else
+	      (
+	      if isEndPoint(D,sm#0) then {"B",rank(D)}
+	      else if isEndPoint(D,bg#0) then {"C", rank(D)} else {"F",4}
+	      )
+	    )
+	  else
+	    (
+	    if #(endVertices(D)*neighbors(D,brp#0))>1 then {"D",rank(D)} else {"E", rank(D)}
+	    )
+	  )
+	)
+
+--dynkinType = method()
+dynkinType(DynkinDiagram) := (D) ->
+new DynkinType from apply(connectedComponents(D),connectedDynkinType) -- ho modificato solo qui per togliere sort
+-- in questo modo l'ordine rimane preservato ma comunque i pezzetti a volte vengono girati
+
+dynkinType(RootSystem) := (R) -> dynkinType(dynkinDiagram(R))
+
+-----------------------------------------------------------------------------------------------------------------------
+
+repDual = method();
+repDual (DynkinType,Weight) := (D,l) -> (
+    n := (D#0)#1 - 1;
+    if (D#0)#0 == "A" then (
+	l = reverse entries l;
+	)
+    else if (D#0)#0 == "D" and (D#0)#1 % 2 == 1 then (
+	l =  entries l^(flatten {toList(0..n-2),n,n-1});
+	)
+    else if (D#0)#0 == "E" and (D#0)#1 == 6 then (
+	l = entries l^{5,1,4,3,2,0};
+	)
+    else (
+	l = entries l;
+	);
+    return weight(rootSystem D,l);
+    )
+
+
+pieces = method();
+pieces (DynkinDiagram,List) := (D,nodi) -> (
+    n := #D;
+    l := {};
+    lTemp := {};
+    for i from 0 to n-1 do (
+	if isMember(i+1,lTemp) then (
+	    lTemp = unique(lTemp | flatten D#i);
+	    )
+	else (
+	    if i =!= 0 then l = l | {lTemp};
+	    lTemp = unique flatten {i+1,flatten D#i};
+	    );
+	);
+    l = l | {lTemp};
+    L := {};
+    for i in nodi do (
+	for m in l do (
+	    M := {};
+	    for j in m do (
+		if j >= i then (
+		    M = M | {j+1};
+		    )		    
+		else (
+		    M = M | {j};
+		    );
+		);
+	    L = L | {M};
+	    );
+	l = L;
+	L = {};
+	);
+    return l;
+    )
+
+
+dual HomogeneousVectorBundle := E -> (
+    E = E#1; -- mi serve perche nella definizione di dual le options erano scritte in modo strano...
+    X := E#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    if X#"picardRank" == ((X#"dynkinType")#0)#1 then ( -- caso flag completa
+	return homogeneousVectorBundle(apply(E#"weights", t -> -t),E#"multiplicities",X);
+	);
+    -- inserito per evitare un problema con la numerazione degli E
+    if ((dynkinType(R))#0)#0 == "E" then return dualE E;
+    RP := rootSystem(R,P#"parabolic");
+    D := apply(connectedComponents(dynkinDiagram RP),connectedDynkinType);
+    piece := pieces(dynkinDiagram RP, sort toList(set(toList(1..rank R)) - P#"parabolic"));
+    piece = piece/(s -> sort s);
+    d := 0;
+    -- casi diversi da E
+    if E#"irreducible" then (
+	r := rank E;
+	t := (E#"weights")#0;
+	t1 := (toGlobalWeights(E#"parabolicWeights",P))#0; -- componente senza line bundle
+	c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
+	l := {};
+	if #D =!= #piece then error "sto sbagliando nel spezzare per il duale";
+	for k from 0 to #D-1 do (
+	    d = dynkinType {D#k};
+	    -- questo controllo serve solo ad evitare un errore di indicizzazione nelle due antenne del tipo D
+	    if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
+	    else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
+	    );
+	l = weight(RP,l);
+	t2 := (toGlobalWeights({l},P))#0;
+	c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
+	v := -(c1 + c2)/r;
+	v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank R)) - (P#"parabolic")));
+	t3 := t - t1; -- componente di line bundle
+	return homogeneousVectorBundle({weight(R, entries(vector v-t3))},{1},X);
+	)
+    else if #(E#"weights") == 1 then (
+	t = (E#"weights")#0;
+	r = rank homogeneousVectorBundle({t},{1},X);
+	t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- componente senza line bundle
+	c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
+	l = {};
+	for k from 0 to #D-1 do (
+	    d = dynkinType {D#k};
+	    if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
+	    else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
+	    );
+	l = weight(RP,l);
+	t2 = (toGlobalWeights({l},P))#0;
+	c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
+	v = -(c1 + c2)/r;
+	v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
+	t3 = t - t1; -- componente di line bundle
+	return homogeneousVectorBundle({weight(R, entries(vector v-t3))},E#"multiplicities",X);
+	)
+    else (
+	w := {};
+	for i from 0 to #(E#"weights")-1 do (
+	    t = (E#"weights")#i;
+	    r = rank homogeneousVectorBundle({t},{1},X);
+	    t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- componente senza line bundle
+	    c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
+	    l = {};
+	    for k from 0 to #D-1 do (
+		d = dynkinType {D#k};
+		if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
+		else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
+		);
+	    l = weight(RP,l);
+	    t2 = (toGlobalWeights({l},P))#0;
+	    c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
+	    v = -(c1 + c2)/r;
+	    v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
+	    t3 = t - t1; -- componente di line bundle
+	    w = w | {weight(R, entries(vector v-t3))};
+	    );
+	return homogeneousVectorBundle(w,E#"multiplicities",X);
+	);
+    )
+
+-- duale nel caso di tipo E
+dualE = method();
+dualE HomogeneousVectorBundle := E -> (
+    X := E#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    RP := rootSystem(R,P#"parabolic");
+    if E#"irreducible" then (
+	r := rank E;
+	t := (E#"weights")#0;
+	t1 := (toGlobalWeights(E#"parabolicWeights",P))#0; -- componente senza line bundle
+	c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
+	l := weight(RP, dualListE(t,X));
+	t2 := (toGlobalWeights({l},P))#0;
+	c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
+	v := -(c1 + c2)/r;
+	v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank R)) - (P#"parabolic")));
+	t3 := t - t1; -- componente di line bundle
+	return homogeneousVectorBundle({weight(R, entries(vector v-t3))},{1},X);
+	)
+    else if #(E#"weights") == 1 then (
+	t = (E#"weights")#0;
+	r = rank homogeneousVectorBundle({t},{1},X);
+	t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- componente senza line bundle
+	c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
+	l = weight(RP, dualListE(t,X));
+	t2 = (toGlobalWeights({l},P))#0;
+	c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
+	v = -(c1 + c2)/r;
+	v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
+	t3 = t - t1; -- componente di line bundle
+	return homogeneousVectorBundle({weight(R, entries(vector v-t3))},E#"multiplicities",X);
+	)
+    else (
+	w := {};
+	for i from 0 to #(E#"weights")-1 do (
+	    t = (E#"weights")#i;
+	    r = rank homogeneousVectorBundle({t},{1},X);
+	    t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- componente senza line bundle
+	    c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
+	    l = weight(RP, dualListE(t,X));
+	    t2 = (toGlobalWeights({l},P))#0;
+	    c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
+	    v = -(c1 + c2)/r;
+	    v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
+	    t3 = t - t1; -- componente di line bundle
+	    w = w | {weight(R, entries(vector v-t3))};
+	    );
+	return homogeneousVectorBundle(w,E#"multiplicities",X);
+	);
+    );
+
+    
+
+-- dovrebbe essere la filtrazione dei duali rovesciata, non è veramente la filtrazione giusta ma per i calcoli va bene!
+-- la motivazione è omologica, la ho in una foto del 11/13/26
+dual FiltrationBundle := F -> (
+    F = F#1; -- mi serve perche nella definizione di dual le options erano scritte in modo strano...
+    X := F#"underlyingVariety";
+    S := F#"factors";
+    S = reverse S;
+    S = apply(S, s -> dual s);
+    filtrationBundle(S,X)
+    )
+    
+
+dualListE = method();
+dualListE (Vector,HomogeneousVariety) := (t,X) -> (
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    RP := rootSystem(R,P#"parabolic");
+    d := 0;
+    l := {};
+    -- caso in cui 4 è marcato
+    if not member(4,P#"parabolic") then (
+	if not member(2,P#"parabolic") then (
+	    if not member(3,P#"parabolic") then (
+		if member(1,P#"parabolic") then l = entries t^{0};
+		)
+	    else (
+		if member(1,P#"parabolic") then l = entries t^{2,0}
+		else  l = entries t^{2};
+		);
+	    -- completo l con quello che succede nelle entrate dopo la 4
+	    R' := rootSystem(rootSystemA(rank R -4), parabolic(rootSystemA(rank R -4),set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
+	    D := apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+	    piece := pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
+	    for k from 0 to #D-1 do (
+		d = dynkinType {D#k};
+		l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+4))));
+		);
+	    )
+	-- caso in cui 4 è marcato ma 2 no
+	else (
+	    if not member(3,P#"parabolic") then (
+		if member(1,P#"parabolic") then l = entries t^{0,1}
+		else l = entries t^{1};
+		)
+	    else (
+		if member(1,P#"parabolic") then l = entries t^{2,1,0}
+		else  l = entries t^{1,2};
+		);
+	    -- completo l con quello che succede nelle entrate dopo la 4
+	    R' = rootSystem(rootSystemA(rank R -4), parabolic(rootSystemA(rank R -4),set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
+	    D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+	    piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
+	    for k from 0 to #D-1 do (
+		d = dynkinType {D#k};
+		l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+4))));
+		);
+	    );
+	)
+    -- caso in cui 4 non è marcato
+    else (
+	-- caso in cui 4 non è marcato ma 2 sì
+	if not member(2,P#"parabolic") then (
+	    if not member(5,P#"parabolic") then (
+		if not member(3,P#"parabolic") then (
+		    if member(1,P#"parabolic") then l = entries t^{0,3}
+		    else l = entries t^{3};
+		    )
+		else (
+		    if member(1,P#"parabolic") then l = entries t^{3,2,0}
+		    else  l = entries t^{3,2};
+		    );
+		-- completo l con quello che succede nelle entrate dopo la 5
+		R' = rootSystem(rootSystemA(rank R -5), parabolic(rootSystemA(rank R -5),set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
+		D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+		piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
+		for k from 0 to #D-1 do (
+		    d = dynkinType {D#k};
+		    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+5))));
+		    );
+		)
+	    -- caso in cui 5 non è marcato
+	    else (
+		if not member(3,P#"parabolic") then (
+		    if member(1,P#"parabolic") then l = entries t^{0};
+		    -- completo l con quello che succede nelle entrate dopo la 3
+		    R' = rootSystem(rootSystemA(rank R -3), parabolic(rootSystemA(rank R -3),set ((toList(P#"parabolic" * set{4,5,6,7,8}))/(i -> i -3))));
+		    D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+		    piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{4,5,6,7,8}))/(i -> i -3))));
+		    for k from 0 to #D-1 do (
+			d = dynkinType {D#k};
+			l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+3))));
+			);
+		    )
+		else (
+		    if not member(1,P#"parabolic") then (
+			if rank R == 6 then (
+			    if not member(6,P#"parabolic") then l = entries t^{4,3,2}
+			    else l = entries t^{5,4,3,2};
+			    )
+			else if rank R == 7 then (
+			    if not member(6,P#"parabolic") then (
+				l = entries t^{4,3,2};
+				if member(7,P#"parabolic") then l = l | entries t^{6};
+				)
+			    else (
+				if not member(7,P#"parabolic") then l = entries t^{5,4,3,2}
+				else l = entries t^{6,5,4,3,2};
+				);
+			    )
+			else (
+			    if not member(6,P#"parabolic") then (
+				l = entries t^{4,3,2};
+				-- completo l con quello che succede nelle entrate dopo la 6
+				R' = rootSystem(rootSystemA(rank R -3), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+				piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				for k from 0 to #D-1 do (
+				    d = dynkinType {D#k};
+				    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
+				    );				    )
+			    else (
+				if not member(7,P#"parabolic") then (
+				    l = entries t^{5,4,3,2};
+				    if member(8,P#"parabolic") then l = l | entries t^{7};
+				    )
+				else (
+				    if not member(8,P#"parabolic") then l = entries t^{6,5,4,3,2}
+				    else l = entries t^{7,6,5,4,3,2};
+				    );
+				);
+			    );
+			)
+		    else (
+			-- nodo 1 non marcato
+			if rank R == 6 then (
+			    if not member(6,P#"parabolic") then l = entries t^{4,3,2,0}
+			    else l = entries t^{5,4,3,2,0};
+			    )
+			else if rank R == 7 then (
+			    if not member(6,P#"parabolic") then (
+				l = entries t^{4,3,2,0};
+				if member(7,P#"parabolic") then l = l | entries t^{6};
+				)
+			    else (
+				if not member(7,P#"parabolic") then l = entries t^{5,4,3,2,0}
+				else l = entries t^{6,5,4,3,2,0};
+				);
+			    )
+			else (
+			    if not member(6,P#"parabolic") then (
+				l = entries t^{4,3,2,0};
+				-- completo l con quello che succede nelle entrate dopo la 6
+				R' = rootSystem(rootSystemA(rank R -3), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+				piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				for k from 0 to #D-1 do (
+				    d = dynkinType {D#k};
+				    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
+				    );				    )
+			    else (
+				if not member(7,P#"parabolic") then (
+				    l = entries t^{5,4,3,2,0};
+				    if member(8,P#"parabolic") then l = l | entries t^{7};
+				    )
+				else (
+				    if not member(8,P#"parabolic") then l = entries t^{6,5,4,3,2,0}
+				    else l = entries t^{7,6,5,4,3,2,0};
+				    );
+				);
+			    );
+			);
+		    );
+		);
+	    )
+	-- caso in cui ne 4 ne due sono marcati 
+	else (		
+	    if not member(5,P#"parabolic") then (
+		if not member(3,P#"parabolic") then (
+		    if not member(1,P#"parabolic") then l = entries t^{3,1}
+		    else l = entries t^{0,3,1};
+		    )
+		else (
+		    if not member(1,P#"parabolic") then l = entries t^{2,1,3}
+		    else l = entries t^{1,0,3,2};
+		    );
+		-- completo l con quello che succede nelle entrate dopo la 5
+		R' = rootSystem(rootSystemA(rank R -5), parabolic(rootSystemA(rank R -5),set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
+		D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+		piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
+		for k from 0 to #D-1 do (
+		    d = dynkinType {D#k};
+		    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+5))));
+		    );
+		)
+	    -- caso nodo 5 non marcato
+	    else (
+		if not member(3,P#"parabolic") then (
+		    if member(1,P#"parabolic") then l = entries t^{0};
+		    if rank R == 6 then (
+			if not member(6,P#"parabolic") then l = l | entries t^{4,3,1}
+			else l = l | entries t^{5,4,3,1};
+			)
+		    else if rank R == 7 then (
+			if not member(6,P#"parabolic") then (
+			    l = l | entries t^{4,3,1};
+			    if member(7,P#"parabolic") then l = l | entries t^{6};
+			    )
+			else (
+			    if not member(7,P#"parabolic") then l = l | entries t^{5,4,3,1}
+			    else l = l | entries t^{6,5,4,3,1};
+			    );
+			)
+		    else (
+			if not member(6,P#"parabolic") then (
+			    l = l | entries t^{4,3,1};
+			    if not member(7,P#"parabolic") then (
+				if member(8,P#"parabolic") then l = l | entries t^{7};
+				)
+			    else (
+				if not member(8,P#"parabolic") then l = l | entries t^{6}
+				else l = l | entries t^{7,6};
+				);
+			    )
+			else (
+			    if not member(7,P#"parabolic") then (
+				l = l | entries t^{5,4,3,1};
+				if  member(8,P#"parabolic") then l = l | entries t^{7};
+				)
+			    else (
+				if not member(8,P#"parabolic") then l = l | entries t^{6,5,4,3,1}
+				else l = l | entries t^{7,6,5,4,3,1};
+				);
+			    );		    
+			);
+		    )
+		--caso nodo 3 non marcato
+		else (
+		    if not member(1,P#"parabolic") then (
+			-- qui devo cambiare le antenne in base alla parità della lunghezza
+			if rank R == 6 then (
+			    if not member(6,P#"parabolic") then l = entries t^{1,2,3,4}
+			    else l = entries t ^{2,1,3,4,5};
+			    )
+			else if rank R == 7 then (
+			    if not member(6,P#"parabolic") then (
+				l = entries t ^{1,2,3,4};
+				if member(7,P#"parabolic") then l = l | entries t^{6};
+				)
+			    else if not member(7,P#"parabolic") then l = entries t ^{2,1,3,4,5}
+			    else l = entries t ^{1,2,3,4,5,6};
+			    )
+			else (
+			    if not member(6,P#"parabolic") then (
+				l =  entries t ^{1,2,3,4};
+				-- completo l con quello che succede nelle entrate dopo la 6
+				R' = rootSystem(rootSystemA(rank R -6), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+				piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				for k from 0 to #D-1 do (
+				    d = dynkinType {D#k};
+				    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
+				    );
+				)
+			    else if not member(7,P#"parabolic") then (
+				l = entries t ^{2,1,3,4,5};
+				if member(8,P#"parabolic") then l = l | entries t^{7};
+				)
+			    else if not member(8,P#"parabolic") then (
+				l = entries t ^{1,2,3,4,5,6};
+				)
+			    else (
+				l = entries t ^{2,1,3,4,5,6,7};
+				);
+			    );
+			)
+		    -- qui sono nel caso in cui il primo nodo non è marcato
+		    else (
+			if rank R == 6 then (
+			    l = entries t^{0,4,2,3,1};
+			    )
+			else if rank R == 7 then (
+			    if not member(6,P#"parabolic") then (
+				l = entries t^{0,4,2,3,1};
+				if member(7,P#"parabolic") then l = l | entries t^{6};
+				)
+			    else l = entries t ^{5,1,4,3,2,0};
+			    )
+			else (
+			    if not member(6,P#"parabolic") then (
+				l = entries t^{0,4,2,3,1};
+				-- completo l con quello che succede nelle entrate dopo la 6
+				R' = rootSystem(rootSystemA(rank R -6), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
+				piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
+				for k from 0 to #D-1 do (
+				    d = dynkinType {D#k};
+				    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
+				    );
+				)
+			    else if not member(7,P#"parabolic") then (
+				l = entries t ^{5,1,2,3,4,0};
+				if member(8,P#"parabolic") then l = l | entries t^{7};
+				)
+			    else (
+				l = entries t^{0,1,2,3,4,5,6,7};
+				);
+			    );
+			);
+		    );
+		);
+	    );
+	);
+    return l;
+    )
+
