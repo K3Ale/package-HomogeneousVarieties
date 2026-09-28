@@ -34,14 +34,19 @@ A package for working with homogeneous vector bundles and their zero loci.
 
 ## Usage
 
+WorkInProgress
+
 
 ## Requirements
 
+- Macaulay2 ≥ 1.25.11 (needed for the `Python` package's `@@` syntax and NumPy support)
+- The `Schubert2`, `Python`, and `WeylGroups` M2 packages (bundled with Macaulay2)
+- Python with NumPy installed and reachable from M2's Python interface
+  (see the M2 Python package tutorial on virtual environments if `numpy` is missing)
 
 
 ## Author
 
 Alessandro Frassineti
 
-## License
 
