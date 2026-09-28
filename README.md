@@ -4,7 +4,7 @@ A package for working with homogeneous vector bundles and their zero loci.
 
 ## Installation
 
-1. Download the repository (`Code > Download ZIP` on GitHub, or
+1. Download the repository (`Code > Download ZIP` on GitHub, or copy and paste on your terminal
    `git clone https://github.com/K3Ale/package-HomogeneousVarieties.git`).
 
 2. Make the package visible to Macaulay2, using one of these two ways:
