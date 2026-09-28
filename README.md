@@ -4,31 +4,32 @@ A package for working with homogeneous vector bundles and their zero loci.
 
 ## Installation
 
-### Option 1: Direct installation from GitHub (BEST)
+1. Download the repository (`Code > Download ZIP` on GitHub, or
+   `git clone https://github.com/K3Ale/package-HomogeneousVarieties.git`).
 
-In Macaulay2, run:
+2. Make the package visible to Macaulay2, using one of these two ways:
 
-```macaulay2
-installPackage("CohomologyZeroLociInHomogeneousVarieties", 
-    Url => "https://github.com/K3Ale/package-HomogeneousVarieties")
+   **(a) Permanent:** copy the file `CohomologyZeroLociInHomogeneousVarieties.m2`
+   and the folder `CohomologyZeroLociInHomogeneousVarieties/` into a directory
+   that is in Macaulay2's `path` (for example the `code` folder inside
+   `applicationDirectory()`; check with `path`).
+
+   **(b) Per session:** in Macaulay2, add the downloaded folder to the path:
+
+```m2
+   path = prepend("/full/path/to/package-HomogeneousVarieties/", path)
 ```
 
-### Option 2: Manual installation
+3. Load the package:
 
-1. Clone the repository:
-```bash
-   git clone https://github.com/K3Ale/package-HomogeneousVarieties.git
-   cd package-HomogeneousVarieties
+```m2
+   needsPackage "CohomologyZeroLociInHomogeneousVarieties"
 ```
 
-2. Copy to Macaulay2 packages folder:
-```bash
-   cp -r CohomologyZeroLociInHomogeneousVarieties ~/.Macaulay2/local/packages/
-```
+4. (Optional) Install the package with its documentation:
 
-3. In Macaulay2:
-```macaulay2
-   loadPackage "CohomologyZeroLociInHomogeneousVarieties"
+```m2
+   installPackage "CohomologyZeroLociInHomogeneousVarieties"
 ```
 
 ## Usage
