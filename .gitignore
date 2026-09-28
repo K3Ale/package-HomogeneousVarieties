@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+*.swp
+*.swo
+*~
+.#*
+#*#
+
+# Macaulay2 cache
+CohomologyZeroLociInHomogeneousVarieties/example-output/
+CohomologyZeroLociInHomogeneousVarieties/CohomologyZeroLociInHomogeneousVarieties.html
+cache/
+compiled/
