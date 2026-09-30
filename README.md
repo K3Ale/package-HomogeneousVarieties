@@ -7,7 +7,7 @@ A package for working with homogeneous vector bundles and their zero loci.
 1. Download the repository (`Code > Download ZIP` on GitHub, or copy and paste on your terminal
    `git clone https://github.com/K3Ale/package-HomogeneousVarieties.git`).
 
-2. 2. (Optional, recommended if you are new to Macaulay2/Python) From the
+2. (Optional, recommended if you are new to Macaulay2/Python) From the
    downloaded folder, in Macaulay2, run:
 
 ```m2
