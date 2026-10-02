@@ -28,9 +28,11 @@ export {
     "homogeneousVectorBundle",
     "filtrationBundle",
     "embeddedVariety",
+    "factors",
     "homogeneousTangentBundle",
     "homogeneousCotangentBundle",
     "structureSheaf",
+    "pullBack",
     "summands",
     "dominantConjugate",
     "isDominant",
@@ -80,12 +82,36 @@ If you compiled Macaulay2 from source, reconfigure and rebuild with:
     ./configure --with-python
 and reinstall this package afterwards.///;
 
-hasNumPy := true; 
-try (runSimpleString "import numpy; import numpy as np";) else hasNumPy = false; 
-if not hasNumPy then error ///CohomologyZeroLociInHomogeneousVarieties requires the Python package numpy, 
-which could not be found. Please install it by following the instructions in the Python package's tutorial on creating a virtual environment and installing NumPy: 
-https://www.macaulay2.com/doc/Macaulay2/share/doc/Macaulay2/Python/html/___Python_sptutorial_co_spcreating_spa_spvirtual_spenvironment_spand_spinstalling_sp__Num__Py.html 
-Then restart Macaulay2 with the Python package's "executable" option set to the virtual environment's Python executable, and reload this package.///;
+------------------------------------------------------------------
+-- Check numpy 
+------------------------------------------------------------------
+hasNumPy := true;
+try (import "numpy";) else hasNumPy = false;
+
+if not hasNumPy then (
+    print "CohomologyZeroLociInHomogeneousVarieties: numpy was not found; attempting automatic installation with pipInstall...";
+    installOK := true;
+    try (pipInstall "numpy";) else installOK = false;
+    if installOK then (
+        hasNumPy = true;
+        try (import "numpy";) else hasNumPy = false;
+        );
+    );
+
+if not hasNumPy then
+    error ///CohomologyZeroLociInHomogeneousVarieties requires the Python
+package numpy, which could not be found or installed automatically.
+
+Please install it manually by running one of the following commands in a
+terminal (outside Macaulay2), then restart Macaulay2 and reload this
+package:
+    python3 -m pip install numpy
+    pip install numpy
+
+If Macaulay2 is configured to use a specific Python executable (for
+example inside a virtual environment), make sure numpy is installed in
+that same environment. See the Python package's documentation on
+setupVirtualEnvironment and the "executable" Configuration option.///;
 
 ((import "sys")@@("path"))@@append(toPython (packageDir | "CohomologyZeroLociInHomogeneousVarieties/pythonFiles/"));
 
@@ -104,10 +130,12 @@ load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/Cohomolog
 
 -* Documentation section *-
 
-load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/docs.m2")
+--load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/docs.m2")
+
+
 -* Test section *-
 
-load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/tests.m2")
+--load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/tests.m2")
 
 end
 
@@ -123,3 +151,5 @@ restart
 installPackage "CohomologyZeroLociInHomogeneousVarieties"
 needsPackage "CohomologyZeroLociInHomogeneousVarieties"
 viewHelp "CohomologyZeroLociInHomogeneousVarieties"
+
+
