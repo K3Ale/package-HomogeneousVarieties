@@ -20,7 +20,7 @@ bottPython HomogeneousVectorBundle := E -> (
     bottP := import "bott_py";
     --bottPy := symbol bottPy;
     result := bottP@@("bottPy")(S, m, rho,simpleRoots, posRoots, rootNorms, M, d);
-    E#"cohomology" = toList(value pythonValue stripNumpyRepr toString result)
+    E#"cohomology" = toList(value result)
     );
 
 bott = method(); 
@@ -691,6 +691,11 @@ hodgeNumbers HomogeneousVariety := o -> X -> (
         ));
     new HashTable from hodge
     );
+
+
+-- aux method for the otpion Verbose in hodgeNumbers
+timedIf = method();
+timedIf (Boolean, Function) := (v, f) -> if v then elapsedTime f() else f();
 
 -- compute the Hodge numbers of a homogeneous variety up to the (k-1)th row
 hodgeNumbers (ZZ,HomogeneousVariety) := o -> (k,X) -> (
