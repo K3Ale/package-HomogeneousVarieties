@@ -1,4 +1,4 @@
--------------------------------- Weights arithmetic ----------------------------------------------------------------
+-------------------------------- Weights arithmetics ----------------------------------------------------------------
 
 -- project the weights to the sublattice of the semisimple part of the parabolic subgroup
 toParabolicWeights = method();
@@ -327,41 +327,81 @@ homogeneousCotangentBundle HomogeneousVariety := X -> (
     if X#"cotangent" =!= null then return X#"cotangent";
     R := X#"rootSystem";
     P := X#"parabolicSubgroup";
-    l := sort toList set toList(1..rank(R)) -  P#"parabolic"; 
-    if ((dynkinType R)#0)#0 == "A" then (
-	bundleR := bundles X;
-	F := {};
-	if #l == 1 then return X#"cotangent" = tensorProduct(bundleR#0, dual bundleR#1);
-	for i from 1 to #bundleR -1 do (
-	    for j from 0 to i-1 do (
-		F = F | {tensorProduct(bundleR#(i-1-j), dual bundleR#i)};
-		);
-	    );
-	return X#"cotangent" = filtrationBundle(F,X);
-	)
-    else if ((dynkinType(R))#0)#0 == "B" and l == {1} then (
-	return X#"cotangent" = dual homogeneousTangentBundle X;
-	)
-    else if ((dynkinType(R))#0)#0 == "C" and l == {rank R} then (
-	return X#"cotangent" = homogeneousVectorBundle({weight(R,flatten {toList((rank R -2) :0),2,-2})},{1},X);
-	)
-    else if ((dynkinType(R))#0)#0 == "D" and l == {1} then (
-	return X#"cotangent" = homogeneousVectorBundle({weight(R,flatten {-2,1,toList((rank R -2) :0)})},{1},X);
-	) 
-    else if ((dynkinType(R))#0)#0 == "D" and l == {rank R} then (
-	return X#"cotangent" = homogeneousVectorBundle({weight(R,flatten {toList((rank R -3) :0),1,0,-2})},{1},X);
-	)
-     else if ((dynkinType(R))#0)#0 == "E" and ((dynkinType(R))#0)#1 == 6 and l == {1} then (
-	return X#"cotangent" = homogeneousVectorBundle({weight(R,{-2,0,1,0,0,0})},{1},X);
-	)
-    else if ((dynkinType(R))#0)#0 == "E" and ((dynkinType(R))#0)#1 == 7 and l == {7} then (
-	return X#"cotangent" = homogeneousVectorBundle({weight(R,{0,0,0,0,0,1,-2})},{1},X);
-	) 
-    else (
-	return X#"cotangent" = dual homogeneousTangentBundle X;
-	);
+    l := sort toList set toList(1..rank(R)) -  P#"parabolic";
+    if X#"isSimple" then (
+        if ((dynkinType R)#0)#0 == "A" then (
+            bundleR := bundles X;
+            F := {};
+            if #l == 1 then return X#"cotangent" = tensorProduct(bundleR#0, dual bundleR#1);
+            for i from 1 to #bundleR -1 do (
+                for j from 0 to i-1 do (
+                    F = F | {tensorProduct(bundleR#(i-1-j), dual bundleR#i)};
+                    );
+                );
+            return X#"cotangent" = filtrationBundle(F,X);
+            )
+        else if ((dynkinType(R))#0)#0 == "B" and l == {1} then (
+            return X#"cotangent" = dual homogeneousTangentBundle X;
+            )
+        else if ((dynkinType(R))#0)#0 == "C" and l == {rank R} then (
+            return X#"cotangent" = homogeneousVectorBundle({weight(R,flatten {toList((rank R -2) :0),2,-2})},{1},X);
+            )
+        else if ((dynkinType(R))#0)#0 == "D" and l == {1} then (
+            return X#"cotangent" = homogeneousVectorBundle({weight(R,flatten {-2,1,toList((rank R -2) :0)})},{1},X);
+            ) 
+        else if ((dynkinType(R))#0)#0 == "D" and l == {rank R} then (
+            return X#"cotangent" = homogeneousVectorBundle({weight(R,flatten {toList((rank R -3) :0),1,0,-2})},{1},X);
+            )
+        else if ((dynkinType(R))#0)#0 == "E" and ((dynkinType(R))#0)#1 == 6 and l == {1} then (
+            return X#"cotangent" = homogeneousVectorBundle({weight(R,{-2,0,1,0,0,0})},{1},X);
+            )
+        else if ((dynkinType(R))#0)#0 == "E" and ((dynkinType(R))#0)#1 == 7 and l == {7} then (
+            return X#"cotangent" = homogeneousVectorBundle({weight(R,{0,0,0,0,0,1,-2})},{1},X);
+            ) 
+        else (
+            return X#"cotangent" = dual homogeneousTangentBundle X;
+            );
+        );
+    cotSum := apply(X#"factors", Xi -> homogeneousCotangentBundle Xi);
+    cotSum = for i from 0 to #cotSum-1 list (
+        pullBack(X,{i+1},cotSum#i)
+        );
+    sum cotSum
     )
 
+-- pull-back a vector bundle to a product of homogeneous varieties
+-- X = X_1 x ... x X_k is the big variety
+-- l is the list of {i_1,...,i_m} identifying the ambient variety of E
+pullBack = method();
+pullBack(HomogeneousVariety,List,FiltrationBundle) := (X,l,F) -> (
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    lM2 := l/(i -> i-1); 
+    dyn := dynkinType R;
+    oldWeights := F#"weights"/(v -> entries v);
+    newWeights := oldWeights/(v -> {});
+    for i from 0 to #dyn-1 do (
+        rankRi := last dyn#i;
+        if member(i,lM2) then (
+            newWeights = for j from 0 to #oldWeights-1 list (
+                newWeights#j | take(oldWeights#j,rankRi)
+                );
+            oldWeights = oldWeights/(v -> drop(v,rankRi));
+            )
+        else (
+            newWeights = newWeights/(v -> v | toList (rankRi:0));
+            );
+        );
+    if F#"irreducible" then (
+        return homogeneousVectorBundle(newWeights/(v -> weight(R,v)),F#"multiplicities",X);
+        );
+    filtrationBundle(newWeights/(v -> weight(R,v)),X)
+    )
+    
+
+        
+            
+        
 
 structureSheaf = method();
 structureSheaf HomogeneousVariety := X -> (
