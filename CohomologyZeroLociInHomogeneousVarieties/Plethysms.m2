@@ -56,6 +56,22 @@ tensorProduct (HomogeneousVectorBundle, FiltrationBundle) := (E,F) -> (
     X := E#"underlyingVariety";
     return filtrationBundle(apply(F#"factors", f -> f*E),X);
     )
+
+-- tensor product of two filtrations F1={E_j^1} F2={E_j^2}
+-- the intermediate factors are sum_{k = a+b}E_a^1*E_b^2
+tensorProduct (FiltrationBundle, FiltrationBundle) := (F1,F2) -> (
+    X := F1#"underlyingVariety";
+    L1 := F1#"factors";
+    L2 := F2#"factors";
+    n := #L1+#L2-2;
+    L1 = L1 | toList(n-#L1+1 : homogeneousVectorBundle({},{},X));
+    L2 = L2 | toList(n-#L2+1 : homogeneousVectorBundle({},{},X));
+    L := for k from 0 to n list (
+        C := compositions(2,k);
+        sum for c in C list L1#(first c) * L2#(last c)
+        );   
+    return filtrationBundle(L,X);
+    )
     
 
 -- tensor product of more than two bundles
@@ -72,6 +88,8 @@ HomogeneousVectorBundle * HomogeneousVectorBundle := (E1,E2) -> tensorProduct(E1
 FiltrationBundle * HomogeneousVectorBundle := (E1,E2) -> tensorProduct(E1,E2)    
 
 HomogeneousVectorBundle * FiltrationBundle := (E1,E2) -> tensorProduct(E1,E2)    
+
+FiltrationBundle * FiltrationBundle := (E1,E2) -> tensorProduct(E1,E2)    
 
 
 
@@ -111,6 +129,25 @@ HomogeneousVectorBundle + HomogeneousVectorBundle := (E1,E2) -> (
     T2 = new HashTable from T2;
     T := T1 + T2;
     homogeneousVectorBundle(keys T, values T, E1#"underlyingVariety")
+    )
+
+-- the last factor is the direct sum of E and the last factor of F
+HomogeneousVectorBundle + FiltrationBundle := (E,F) -> (
+    if not (E#"underlyingVariety" == F#"underlyingVariety") then error "expected vector bundles on the same variety";
+    S := drop(F#"factors",-1);
+    S = S | {last F#"factors" + E};
+    filtrationBundle(S,E#"underlyingVariety")
+    )
+    
+FiltrationBundle + HomogeneousVectorBundle := (F,E) -> (E + F)
+
+-- caveat: this filtration construction is asymmetric
+FiltrationBundle + FiltrationBundle := (F1,F2) -> (
+    if not (F1#"underlyingVariety" == F2#"underlyingVariety") then error "expected vector bundles on the same variety";
+    S1 := drop(F1#"factors",-1);
+    S2 := drop(F2#"factors",-1);
+    S := S1 | S2 | {last F1#"factors" + last F2#"factors"};
+    filtrationBundle(S,F1#"underlyingVariety")
     )
 
 -------------------------- symmetric power -------------------------------------------------------------------------
@@ -648,8 +685,9 @@ centralMemberWedge = method();
 centralMemberWedge (ZZ,List) := (k,S) -> (
     X := (S#0)#"underlyingVariety";
     C := compositions(length S,k);
+    V := homogeneousVectorBundle({},{},X);
     F := apply(C, c -> tensorProduct(for i from 0 to length S - 1 list exteriorPower(c#i,S#i)));
-    filtrationBundle(F,X)
+    filtrationBundle(select(F, f -> f != V),X)
     )
 
 
@@ -818,6 +856,7 @@ determinant HomogeneousVectorBundle := o -> E -> (
     R := X#"rootSystem";
     P := X#"parabolicSubgroup";
     P0 := P#"parabolic";
+    if E == homogeneousVectorBundle({},{},X) then return homogeneousVectorBundle({},{},X);
     if E#"irreducible" then (
         r := rank E;
         if r == 1 then return E;
@@ -899,7 +938,7 @@ determinant FiltrationBundle := o -> F -> (
 
 
 
------------------------------------------------- the following methods are taken from WeylGroups ---------------------------------------------------------
+---------------------the following methods are taken from WeylGroups ---------------------------------------------------------
 
 --(internal function) Finding the labels of the neighbors of the i-th vertex in a Dynkin diagram
 neighbors = method()
@@ -1068,22 +1107,28 @@ dynkinType(RootSystem) := (R) -> dynkinType(dynkinDiagram(R))
 
 ---------------------------------------------- dual of bundles -------------------------------------------------------------------------
 
+-- weight of the dual representation
 repDual = method();
 repDual (DynkinType,Weight) := (D,l) -> (
-    n := (D#0)#1 - 1;
-    if (D#0)#0 == "A" then (
-        l = reverse entries l;
-        )
-    else if (D#0)#0 == "D" and (D#0)#1 % 2 == 1 then (
-        l =  entries l^(flatten {toList(0..n-2),n,n-1});
-        )
-    else if (D#0)#0 == "E" and (D#0)#1 == 6 then (
-        l = entries l^{5,1,4,3,2,0};
-        )
-    else (
-        l = entries l;
+    l = entries l;
+    newl := for dyn in D list (
+        n := dyn#1;
+        currentl := take(l,n);
+        l = drop(l,n);
+        if dyn#0 == "A" then (
+            reverse currentl
+            )
+        else if dyn#0 == "D" and n % 2 == 1 then (
+             entries (vector currentl)^(flatten {toList(0..n-3),n-1,n-2})
+            )
+        else if dyn#0 == "E" and n == 6 then (
+            entries (vector currentl)^{5,1,4,3,2,0}
+            )
+        else (
+            currentl
+            )
         );
-    return weight(rootSystem D,l);
+    return weight(rootSystem D,flatten newl);
     )
 
 
@@ -1122,15 +1167,112 @@ pieces (DynkinDiagram,List) := (D,nodi) -> (
     return l;
     )
 
-
+-*
 dual HomogeneousVectorBundle := E -> (
     E = E#1; -- I need this because in the definition of dual the options were written in a strange way...
     X := E#"underlyingVariety";
     R := X#"rootSystem";
     P := X#"parabolicSubgroup";
-    if X#"picardRank" == ((X#"dynkinType")#0)#1 then ( -- case of the complete flag
+    if X#"picardRank" == rank R then ( -- case of the complete flag
         return homogeneousVectorBundle(apply(E#"weights", t -> -t),E#"multiplicities",X);
         );
+    dynR := dynkinType(R);
+    oldWeights := E#"weights";
+    newWeights := E#"weights"/(w -> {});
+    Psorted := sort toList P#"parabolic";
+    for i from 0 to #dynR-1 do (
+        currentWeights := oldWeights/(w -> take(entries w,(dynR#i)#1));
+        Ri := rootSystem dynkinType {dynR#i};
+        ni := rank Ri;
+        Pi := set select(Psorted, j -> ni >= j);
+        Psorted = toList(set Psorted - Pi)/(j -> j - ni);
+        Pi = newParabolic(Ri,Pi);
+        Xi := homogeneousVariety(Ri,Pi);
+        Ei := homogeneousVectorBundle(currentWeights,E#"multiplicities",Xi);
+        -- inserted to avoid a problem with the numbering of the E's
+        if dyn#0 == "E" then newWeights = newWeights/(w -> w | entries dualListE); ------------------ errore per ora
+        RPi := rootSystem(Ri,Pi#"parabolic");
+        D := apply(connectedComponents(dynkinDiagram RPi),connectedDynkinType);
+        piece := pieces(dynkinDiagram RPi, sort toList(set(toList(1..rank Ri)) - Pi#"parabolic"));
+        piece = piece/(s -> sort s);
+        d := 0;
+        currentWeights = currentWeights/(w -> vector w);
+        -- cases other than E
+        if E#"irreducible" then (
+            r := rank Ei;
+            t := currentWeights#0;
+            t1 := (toGlobalWeights(toParabolicWeights(currentWeights,Pi),Pi))#0; -- component without line bundle
+            c1 := chern(1,homogeneousVectorBundle({t1},{1},Xi));
+            l := {};
+            if #D =!= #piece then error "I am making a mistake in splitting for the dual";
+            for k from 0 to #D-1 do (
+                d = dynkinType {D#k};
+                -- this check only serves to avoid an indexing error in the two antennae of type D
+                if (dynR#i)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank Ri - 3, Pi#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
+                else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
+                );
+            l = weight(RPi,l);
+            t2 := (toGlobalWeights({l},Pi))#0;
+            c2 := chern(1,homogeneousVectorBundle({t2},{1},Xi));
+            v := -(c1 + c2)/r;
+            v = mixWeights((toParabolicWeights({t2},Pi))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank Ri)) - (Pi#"parabolic")));
+            t3 := t - t1; -- line bundle component
+            newWeights = newWeights/(w -> w | entries(vector v-t3)
+            return homogeneousVectorBundle({weight(Ri, entries(vector v-t3))},{1},Xi); ----- sono arrivato qui ma ci sono errori
+            )
+        else if #(E#"weights") == 1 then (
+            t = (E#"weights")#0;
+            r = rank homogeneousVectorBundle({t},{1},X);
+            t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
+            c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
+            l = {};
+            for k from 0 to #D-1 do (
+                d = dynkinType {D#k};
+                if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
+                else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
+                );
+            l = weight(RP,l);
+            t2 = (toGlobalWeights({l},P))#0;
+            c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
+            v = -(c1 + c2)/r;
+            v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
+            t3 = t - t1; -- line bundle component
+            return homogeneousVectorBundle({weight(R, entries(vector v-t3))},E#"multiplicities",X);
+            )
+        else (
+            w := {};
+            for i from 0 to #(E#"weights")-1 do (
+                t = (E#"weights")#i;
+                r = rank homogeneousVectorBundle({t},{1},X);
+                t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- component without line bundle
+                c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
+                l = {};
+                for k from 0 to #D-1 do (
+                    d = dynkinType {D#k};
+                    if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
+                    else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
+                    );
+                l = weight(RP,l);
+                t2 = (toGlobalWeights({l},P))#0;
+                c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
+                v = -(c1 + c2)/r;
+                v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
+                t3 = t - t1; -- line bundle component
+                w = w | {weight(R, entries(vector v-t3))};
+                );
+            return homogeneousVectorBundle(w,E#"multiplicities",X);
+            );
+        )
+*-
+dual HomogeneousVectorBundle := E -> (
+    E = E#1; -- I need this because in the definition of dual the options were written in a strange way...
+    X := E#"underlyingVariety";
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    if X#"picardRank" == rank R then ( -- case of the complete flag
+        return homogeneousVectorBundle(apply(E#"weights", t -> -t),E#"multiplicities",X);
+        );
+    dynR := dynkinType(R);
     -- inserted to avoid a problem with the numbering of the E's
     if ((dynkinType(R))#0)#0 == "E" then return dualE E;
     RP := rootSystem(R,P#"parabolic");
@@ -1216,7 +1358,7 @@ dualE HomogeneousVectorBundle := E -> (
         t := (E#"weights")#0;
         t1 := (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
         c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
-        l := weight(RP, dualListE(t,X));
+        l := weight(RP, dualListE(t,R,P));
         t2 := (toGlobalWeights({l},P))#0;
         c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
         v := -(c1 + c2)/r;
@@ -1229,7 +1371,7 @@ dualE HomogeneousVectorBundle := E -> (
         r = rank homogeneousVectorBundle({t},{1},X);
         t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
         c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-        l = weight(RP, dualListE(t,X));
+        l = weight(RP, dualListE(t,R,P));
         t2 = (toGlobalWeights({l},P))#0;
         c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
         v = -(c1 + c2)/r;
@@ -1244,7 +1386,7 @@ dualE HomogeneousVectorBundle := E -> (
             r = rank homogeneousVectorBundle({t},{1},X);
             t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- component without line bundle
             c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-            l = weight(RP, dualListE(t,X));
+            l = weight(RP, dualListE(t,R,P));
             t2 = (toGlobalWeights({l},P))#0;
             c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
             v = -(c1 + c2)/r;
@@ -1269,9 +1411,7 @@ dual FiltrationBundle := F -> (
     
 -- aux method for duality in the E case
 dualListE = method();
-dualListE (Vector,HomogeneousVariety) := (t,X) -> (
-    R := X#"rootSystem";
-    P := X#"parabolicSubgroup";
+dualListE (Vector,RootSystem,ParabolicGroup) := (t,R,P) -> (
     RP := rootSystem(R,P#"parabolic");
     d := 0;
     l := {};
