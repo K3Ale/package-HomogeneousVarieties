@@ -11,3 +11,7 @@ CohomologyZeroLociInHomogeneousVarieties/example-output/
 CohomologyZeroLociInHomogeneousVarieties/CohomologyZeroLociInHomogeneousVarieties.html
 cache/
 compiled/
+
+# Python cache
+__pycache__/
+*.pyc

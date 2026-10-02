@@ -29,9 +29,8 @@ and run this script again.
 -- returns true if "import moduleName" succeeds in the Python Macaulay2 is
 -- currently using
 hasModule = moduleName -> (
-    ok := true;
-    try runSimpleString("import " | moduleName) else ok = false;
-    ok
+    py := toString ((import "sys")@@"executable");
+    run(py | " -c \"import " | moduleName | "\" >/dev/null 2>&1") == 0
     );
 
 -- creates an isolated venv (with pip preinstalled), points Macaulay2's
@@ -60,9 +59,16 @@ Then restart Macaulay2 and run:  load "setup.m2"
 ///;
         );
     venvPython := venvDir | "/bin/python3";
-    print ("Switching Macaulay2's Python to " | venvPython | " and installing numpy...");
-    loadPackage("Python", Configuration => {"executable" => venvPython}, Reload => true);
-    pipInstall "numpy";
+    print ("Installing numpy into " | venvPython | " ...");
+    -- installed as an external process, not via M2's Python package: that
+    -- package may already be loaded with a different executable in this
+    -- session, and M2 does not allow switching executables without a restart
+    if run(venvPython | " -m pip install numpy") != 0 then error ///
+pip install numpy failed inside the virtual environment -- see the output
+above for details.
+///;
+    print "";
+    print "NumPy was installed successfully in the virtual environment.";
     print "";
     print "IMPORTANT: in every new Macaulay2 session, run this line BEFORE";
     print "loading CohomologyZeroLociInHomogeneousVarieties, so it keeps using";
@@ -98,12 +104,14 @@ if hasModule "numpy" then (
         );
     if not installed then (
         print "Falling back to an isolated virtual environment...";
-        try installNumPyInFreshVenv() else
+        -- installNumPyInFreshVenv installs into a separate venv Python, not
+        -- the one "hasModule"/"havePip" above just checked, and it errors
+        -- out itself on failure, so its own success is the signal here
+        try (installNumPyInFreshVenv(); installed = true) else
             print "Automatic setup failed -- see the messages above for what to do.";
         );
-    if hasModule "numpy" then (
+    if installed then (
         print "";
-        print "NumPy is now available. You can run:";
-        print "    needsPackage \"CohomologyZeroLociInHomogeneousVarieties\"";
+        print "Setup complete.";
         );
     )
