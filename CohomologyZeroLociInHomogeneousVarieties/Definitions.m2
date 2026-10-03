@@ -149,7 +149,7 @@ homogeneousVectorBundle (List,List,HomogeneousVariety) := (S,m,X) -> (
     if #S =!= #m then error "the number of weights must be equal to the number of multiplicities";
     P := X#"parabolicSubgroup";
     R := X#"rootSystem";
-    RP := rootSystem(R,P#"parabolic");
+    RP := leviRootSystem X;
     L := pack(2,mingle(S,m));
     L = new HashTable from tally flatten for c in L list toList(c#1:c#0);
     S = keys L;
@@ -191,7 +191,7 @@ filtrationBundle = method(TypicalValue => FiltrationBundle);
 filtrationBundle (List,HomogeneousVariety) := (S,X) -> (
     R := X#"rootSystem";
     P := X#"parabolicSubgroup";  
-    RP := rootSystem(R,P#"parabolic");
+    RP := leviRootSystem X;
     if class S#0 === HomogeneousVectorBundle then (
 	L := {};
 	for e in S do (

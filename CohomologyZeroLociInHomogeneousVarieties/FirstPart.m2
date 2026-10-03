@@ -1,11 +1,40 @@
 -------------------------------- Weights arithmetics ----------------------------------------------------------------
 
+-- rootSystem(...) returns a new object, with nothing computed in it yet, on
+-- every call. P and X are shared by all the bundles on a variety, so these
+-- root systems are built once and kept in their caches.
+globalRootSystem = P -> (
+    if not P.cache#?"globalRootSystem" then P.cache#"globalRootSystem" = rootSystem(P#"dynkinType");
+    P.cache#"globalRootSystem"
+    )
+
+parabolicRootSystem = P -> (
+    if not P.cache#?"parabolicRootSystem" then P.cache#"parabolicRootSystem" = rootSystem(globalRootSystem P, P#"parabolic");
+    P.cache#"parabolicRootSystem"
+    )
+
+-- Levi root system built from X#"rootSystem" (which, for products of
+-- varieties, need not have the same node order as globalRootSystem P)
+leviRootSystem = X -> (
+    if not X.cache#?"leviRootSystem" then X.cache#"leviRootSystem" = rootSystem(X#"rootSystem", (X#"parabolicSubgroup")#"parabolic");
+    X.cache#"leviRootSystem"
+    )
+
+-- root system of the sub-diagram on the nodes L of X#"rootSystem"
+subRootSystem = (X,L) -> (
+    key := ("subRootSystem", sort toList L);
+    if not X.cache#?key then (
+        R := X#"rootSystem";
+        X.cache#key = rootSystem(R, parabolic(R, set L));
+        );
+    X.cache#key
+    )
+
 -- project the weights to the sublattice of the semisimple part of the parabolic subgroup
 toParabolicWeights = method();
 toParabolicWeights (List, ParabolicGroup) := (S,P) -> (
     P0 := P#"parabolic";
-    R := rootSystem(P#"dynkinType");
-    RP := rootSystem(R, P0);
+    RP := parabolicRootSystem P;
     T := toList(P0);
     T = apply(T, t -> t-1);
     T = sort T;
@@ -41,7 +70,7 @@ mixWeights (Weight,List,List) := (l,s,LX) -> (
 toGlobalWeights = method();
 toGlobalWeights (List, ParabolicGroup) := (S,P) -> (
     P0 := P#"parabolic";
-    R := rootSystem(P#"dynkinType");
+    R := globalRootSystem P;
     Ic := set toList(1..rank(R)) - P0;
     T := {};
     for l in S do (
@@ -57,7 +86,7 @@ toGlobalWeights (List, ParabolicGroup) := (S,P) -> (
 projection = method();
 projection (Weight, ParabolicGroup) := (l,P) -> (
     P0 := P#"parabolic";
-    R := rootSystem(P#"dynkinType");
+    R := globalRootSystem P;
     I := toList(P0);
     I = apply(I, t -> t-1);
     I = sort I;
@@ -122,10 +151,9 @@ toPartitions Weight := v -> (
 
 ---------------------- rank and dimension ------------------------------
 
--- Levi root systems are rebuilt from scratch by rootSystem(R,P) for every
--- bundle, so anything cached on the RootSystem object itself is lost; key
--- caches on its content instead (Cartan matrix + root norms, i.e. the
--- CartanMatrixTrInv/RootNorms entries read positionally elsewhere).
+-- Equal root systems can still be distinct objects (different varieties,
+-- sub-diagrams, user-built ones), so caches are keyed on content: Cartan
+-- matrix + root norms (the RootNorms entry read positionally elsewhere).
 rootSystemKey = R -> (entries cartanMatrix R, R#((keys R)#1));
 
 -- coefficients of each positive coroot on the simple coroots, and the
@@ -189,7 +217,7 @@ chern(ZZ, HomogeneousVariety) := (p,X) -> (
     if p =!= 1 then error "at the moment we compute only the first chern class";
     if X#"firstChernClass" =!= null then return X#"firstChernClass";
     P := X#"parabolicSubgroup";
-    T := set (1..rank(rootSystem(P#"dynkinType"))) -  P#"parabolic";
+    T := set (1..rank(globalRootSystem P)) -  P#"parabolic";
     T = sort apply(toList T, s -> s-1);
     X#"firstChernClass" = (sum(X#"positiveRoots"))^T
     );
@@ -209,7 +237,7 @@ chern(ZZ, HomogeneousVectorBundle) := (p,E) -> (
     if E#"totalChernClass" =!= null then return E#"totalChernClass";
     X := E#"underlyingVariety";
     P := X#"parabolicSubgroup";
-    T := set (1..rank(rootSystem(P#"dynkinType"))) -  P#"parabolic";
+    T := set (1..rank(globalRootSystem P)) -  P#"parabolic";
     T = sort apply(toList T, s -> s-1);
     E#"totalChernClass" = (((determinant E)#"weights")#0)^T
     );

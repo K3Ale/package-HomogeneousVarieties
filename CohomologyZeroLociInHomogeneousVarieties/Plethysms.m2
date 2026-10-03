@@ -851,6 +851,21 @@ determinantCoeff(RootSystem,ZZ,Vector) := (R,k,v) -> (
     return scalarProduct(R,weight(R,entries v),w)/scalarProduct(R,w,w);
     );
 
+-- for each marked node i of X: the root system of the component of the
+-- parabolic nodes attached to i, the position of i in it, and the
+-- (0-based) indices of that component. Depends only on X.
+determinantData = X -> (
+    if not X.cache#?"determinantData" then (
+        R := X#"rootSystem";
+        P0 := (X#"parabolicSubgroup")#"parabolic";
+        X.cache#"determinantData" = for i in sort toList(set(1..rank(R))-P0) list (
+            L := sort toList connectedComponent(R,P0,i);
+            (i, subRootSystem(X,L), position(L, l -> l == i), L/(j -> j-1))
+            );
+        );
+    X.cache#"determinantData"
+    )
+
 determinant HomogeneousVectorBundle := o -> E -> (
     X := E#"underlyingVariety";
     R := X#"rootSystem";
@@ -861,48 +876,33 @@ determinant HomogeneousVectorBundle := o -> E -> (
         r := rank E;
         if r == 1 then return E;
         t := (E#"weights")#0;
-        indexes := flatten {0,sort toList(set(1..rank(R))-P0),1+rank R};
         l := new MutableList from (rank R:0);
-        for i from 1 to #indexes - 2 do (
-            L := sort toList connectedComponent(R,P0,indexes#i);
-            pos := position(L, l -> l == indexes#i);
-            R' := rootSystem(R,parabolic(R,set L));
-            L = L/(i -> i -1 );
-            coeff := determinantCoeff(R',pos+1, t^L);
-            l#(indexes#i-1) = lift(coeff*r,ZZ);
+        for d in determinantData X do (
+            (i, R', pos, L) := d;
+            l#(i-1) = lift(determinantCoeff(R',pos+1, t^L)*r,ZZ);
             );
         l = weight(R,toList l);
         return homogeneousVectorBundle({l},{1},X);
         )
-    else if #(E#"weights") == 1 then (	
+    else if #(E#"weights") == 1 then (
         t = (E#"weights")#0;
         r = rank homogeneousVectorBundle({t},{1},X);
-        indexes = flatten {0,sort toList(set(1..rank(R))-P0),1+rank R};
         l = new MutableList from (rank R:0);
-        for i from 1 to #indexes - 2 do (
-            L := sort toList connectedComponent(R,P0,indexes#i);
-            pos := position(L, l -> l == indexes#i);
-            R' := rootSystem(R,parabolic(R,set L));
-            L = L/(i -> i -1 );
-            coeff := determinantCoeff(R',pos+1, t^L);
-            l#(indexes#i-1) = lift(coeff*r,ZZ);
+        for d in determinantData X do (
+            (i, R', pos, L) := d;
+            l#(i-1) = lift(determinantCoeff(R',pos+1, t^L)*r,ZZ);
             );
         l = weight(R,toList l);
         return homogeneousVectorBundle({((E#"multiplicities")#0)*l},{1},X);
         )
     else (
         M := {};
-        indexes = flatten {0,sort toList(set(1..rank(R))-P0),1+rank R};
         for t in E#"weights" do (
             r = rank homogeneousVectorBundle({t},{1},X);
             l = new MutableList from (rank R:0);
-            for i from 1 to #indexes - 2 do (
-                L := sort toList connectedComponent(R,P0,indexes#i);
-                pos := position(L, l -> l == indexes#i);
-                R' := rootSystem(R,parabolic(R,set L));
-                L = L/(i -> i -1 );
-                coeff := determinantCoeff(R',pos+1, t^L);
-                l#(indexes#i-1) = lift(coeff*r,ZZ);
+            for d in determinantData X do (
+                (i, R', pos, L) := d;
+                l#(i-1) = lift(determinantCoeff(R',pos+1, t^L)*r,ZZ);
                 );
             l = toList l;
             M = M | {l};
@@ -1188,11 +1188,11 @@ dualWeight = (t,X) -> (
     c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
     vals := new MutableHashTable; -- global node index -> dual Levi-weight entry
     for comp in subsetComponents(R,P0) do (
-        d := dynkinType rootSystem(R, parabolic(R, set comp));
+        d := dynkinType subRootSystem(X, comp);
         dualComp := entries repDual(d, weight(rootSystem d, t^(apply(comp, i -> i-1))));
         for idx from 0 to #comp - 1 do vals#(comp#idx) = dualComp#idx;
         );
-    l := weight(rootSystem(R,P#"parabolic"), apply(sort toList P0, i -> vals#i));
+    l := weight(leviRootSystem X, apply(sort toList P0, i -> vals#i));
     t2 := (toGlobalWeights({l},P))#0;
     c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
     v := -(c1 + c2)/r;
