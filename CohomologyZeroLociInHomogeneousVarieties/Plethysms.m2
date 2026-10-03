@@ -4,6 +4,40 @@
 tensorProduct (HomogeneousVectorBundle, HomogeneousVectorBundle) := (E1,E2) -> (
     if not (E1#"underlyingVariety" == E2#"underlyingVariety") then error "expected vector bundles on the same variety";
     X := E1#"underlyingVariety";
+    T := new MutableHashTable;
+    for i from 0 to #(E1#"weights")-1 do (
+        for j from 0 to #(E2#"weights")-1 do (
+            c := (E1#"multiplicities")#i * (E2#"multiplicities")#j;
+            for p in tensorWeights((E1#"weights")#i, (E2#"weights")#j, X) do (
+                (w, m) := p;
+                T#w = (if T#?w then T#w else 0) + m * c;
+                );
+            );
+        );
+    homogeneousVectorBundle(keys T, values T, X)
+    )
+
+-- summands (weight, multiplicity) of E_t1 (x) E_t2 for single weights t1, t2.
+-- Writing t = a + l, with a the Levi part (zero on the marked nodes) and l
+-- the line bundle part, E_t1 (x) E_t2 = (E_a1 (x) E_a2) (x) L(l1 + l2): the
+-- decomposition only depends on (a1, a2), and is cached on X for them.
+tensorWeights = (t1,t2,X) -> (
+    P := X#"parabolicSubgroup";
+    R := X#"rootSystem";
+    a1 := (toGlobalWeights(toParabolicWeights({t1},P),P))#0;
+    a2 := (toGlobalWeights(toParabolicWeights({t2},P),P))#0;
+    key := ("tensorLevi", sort {entries a1, entries a2});
+    if not X.cache#?key then (
+        E := tensorProductIrreducible(homogeneousVectorBundle({a1},{1},X), homogeneousVectorBundle({a2},{1},X));
+        X.cache#key = apply(E#"weights", E#"multiplicities", (w,m) -> (entries w, m));
+        );
+    shift := entries(t1 - a1) + entries(t2 - a2);
+    apply(X.cache#key, p -> (weight(R, p#0 + shift), p#1))
+    )
+
+-- tensor product of two irreducible bundles
+tensorProductIrreducible = (E1,E2) -> (
+    X := E1#"underlyingVariety";
     RP := E1#"rootSystem";
     T := new MutableHashTable;
     Ttemp := new MutableHashTable;
@@ -15,35 +49,22 @@ tensorProduct (HomogeneousVectorBundle, HomogeneousVectorBundle) := (E1,E2) -> (
         E2 = E;
         );
     if rank(E1) == 1 then return homogeneousVectorBundle(apply(E2#"weights", l -> l + (E1#"weights")#0), E2#"multiplicities",X);
-    if E1#"irreducible" and E2#"irreducible" then (
-        l1 := (E1#"parabolicWeights")#0;
-        W := dominantCharacterHighestWeight(RP,l1);
-        l2 := (E2#"parabolicWeights")#0;
-        Ttemp = tensorProduct(l1,l2,RP,W);
-        Ttemp = new HashTable from Ttemp;
-        d := (rank(E2)*chern(1,E1) + rank(E1)*chern(1,E2))/(rank(E1)*rank(E2)); 
-        -- this d must be the SLOPE of every summand that I compute with the representations
-        for t in keys Ttemp do (
-            E := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"), {1}, X);
-            c := lift(d-chern(1,E)/rank E,ZZ);
-            l' := weight(R,mixWeights(t,entries c,LX));
-            if T#?(l') then T#(l') = T#(l') + Ttemp#t
-            else T#(l') = Ttemp#t;
-            );
-        T = new HashTable from T;
-        E = homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X);
-        return E;
-        )
-    else (
-        S := homogeneousVectorBundle({},{},X);
-        for i from 0 to #(E1#"weights")-1 do (
-            for j from 0 to #(E2#"weights")-1 do (
-                E = tensorProduct(homogeneousVectorBundle({(E1#"weights")#i},{1},X),homogeneousVectorBundle({(E2#"weights")#j},{1},X));
-                S = S + homogeneousVectorBundle(E#"weights",apply(E#"multiplicities", k -> k * (E1#"multiplicities")#i * (E2#"multiplicities")#j),X);
-                );
-            );
-        return S;
+    l1 := (E1#"parabolicWeights")#0;
+    W := dominantCharacterHighestWeight(RP,l1);
+    l2 := (E2#"parabolicWeights")#0;
+    Ttemp = tensorProduct(l1,l2,RP,W);
+    Ttemp = new HashTable from Ttemp;
+    d := (rank(E2)*chern(1,E1) + rank(E1)*chern(1,E2))/(rank(E1)*rank(E2));
+    -- this d must be the SLOPE of every summand that I compute with the representations
+    for t in keys Ttemp do (
+        E := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"), {1}, X);
+        c := lift(d-chern(1,E)/rank E,ZZ);
+        l' := weight(R,mixWeights(t,entries c,LX));
+        if T#?(l') then T#(l') = T#(l') + Ttemp#t
+        else T#(l') = Ttemp#t;
         );
+    T = new HashTable from T;
+    homogeneousVectorBundle(apply(keys T, t -> weight(R,entries t)), values T, X)
     )
 
 -- tensor product of a completely reducible bundle with a filtration
