@@ -1,21 +1,55 @@
 
--- Strips NumPy's scalar-repr wrapper (e.g. "np.int64(3)" -> "3",
--- "np.float64(-2.5)" -> "-2.5") from a Python value's string
--- representation, so it can be safely re-evaluated as plain Python/M2
--- source via pythonValue below. NumPy >= 2.0 wraps scalar reprs like this
--- (NumPy < 2.0 printed plain numbers, which this leaves untouched).
-stripNumpyRepr = s -> replace("np\\.[A-Za-z_][A-Za-z0-9_]*\\(([^()]*)\\)", "\\1", s);
+-- Results coming back from Python (dicts/lists/tuples of numpy scalars)
+-- are converted to M2 directly via "value result": the Python package's
+-- (value, PythonObject) hooks walk the object natively (numpy ints and
+-- floats satisfy numbers.Integral/numbers.Real, so they convert to ZZ/RR
+-- like plain Python numbers). This used to go through
+-- "value pythonValue stripNumpyRepr toString result" -- stringify the
+-- whole result, regex out NumPy's "np.int64(...)" repr wrapper, hand the
+-- cleaned string back to Python to re-eval it into an object, and only
+-- then convert -- which was a size-dependent round trip for no benefit
+-- over converting the original PythonObject directly.
 
-dominantCharacterHighestWeight = method();
-dominantCharacterHighestWeight (RootSystem,Weight) := (R,l) -> (
-    posRoots := elements positiveRoots(R);
-    rho := entries halfSumOfRoots(R);
-    M := R#((keys R)#0);
-    rootNorms := R#((keys R)#1);
-    sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
-    l' := entries l;
-    poin := new MutableHashTable;
+-- Everything below (positive roots, rho, the simple roots, the Cartan
+-- matrix inverse as exact Fractions, the root norms, and the reduced word
+-- of the longest Weyl group element) depends only on R, never on the
+-- weight(s) a given call is acting on. Before this cache existed, every
+-- single call to the functions in this file recomputed and re-toPython'd
+-- all of it from scratch, which dominated the running time once these
+-- functions were called many times (e.g. from the quadratic loop in
+-- tensorProduct(HomogeneousVectorBundle,HomogeneousVectorBundle), or from
+-- bottPython/hodgeNumbers). We cache it once per RootSystem, following the
+-- same pattern already used for R#"poincare1" below.
+rootSystemPythonData = method();
+rootSystemPythonData RootSystem := R -> (
+    if not R#?"lieFunctionsPythonData" then (
+        posRoots := elements positiveRoots(R);
+        rho := entries halfSumOfRoots(R);
+        M := R#((keys R)#0);
+        rootNorms := R#((keys R)#1);
+        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
+        tau := reducedDecomposition longestWeylGroupElement(R);
+        fractions := import "fractions";
+        Fraction := (fractions)@@("Fraction");
+        R#"lieFunctionsPythonData" = new HashTable from {
+            "posRoots" => toPython (posRoots/(r -> entries r)),
+            "rho" => toPython rho,
+            "simpleRoots" => toPython (sRoots/(r -> entries r)),
+            "M" => toPython (entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)))),
+            "rootNorms" => toPython rootNorms,
+            "tau" => toPython tau
+            };
+        );
+    R#"lieFunctionsPythonData"
+    )
+
+-- R#"poincare1" is itself already cached (as before); this just also
+-- caches its one-time toPython conversion, which was previously redone on
+-- every call.
+rootSystemPoincarePythonData = method();
+rootSystemPoincarePythonData RootSystem := R -> (
     if not R#?"poincare1" then (
+        poin := new MutableHashTable;
         x := local x;
         ZZ[x];
         for t in subsets toList(1..rank(R)) do (
@@ -23,21 +57,20 @@ dominantCharacterHighestWeight (RootSystem,Weight) := (R,l) -> (
             );
         R#"poincare1" = new HashTable from poin;
         );
-    poin = R#"poincare1";
-    -- start the translation into python;
-    fractions := import "fractions";
-    Fraction := (fractions)@@("Fraction");
-    posRoots = toPython (posRoots/(r -> entries r));
-    rho = toPython rho;
-    lam := toPython l';
-    simpleRoots := toPython (sRoots/(r -> entries r));
-    M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-    M = toPython M;
-    rootNorms = toPython rootNorms;
-    poinc := toPython poin;
+    if not R#?"poincare1Python" then (
+        R#"poincare1Python" = toPython (R#"poincare1");
+        );
+    R#"poincare1Python"
+    )
+
+dominantCharacterHighestWeight = method();
+dominantCharacterHighestWeight (RootSystem,Weight) := (R,l) -> (
+    pyData := rootSystemPythonData R;
+    lam := toPython entries l;
+    poinc := rootSystemPoincarePythonData R;
     dominant := import "dominantCharacterHighestWeight";
-    result := dominant@@("dominantCharacterHighestWeight")(posRoots,lam, rho, simpleRoots, rootNorms, M, poinc);
-    character := value pythonValue stripNumpyRepr toString result;
+    result := dominant@@("dominantCharacterHighestWeight")(pyData#"posRoots",lam, pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc);
+    character := value result;
     character = new Tally from character;
     character = character/(v -> weight(R,toList v));
     return character;
@@ -48,21 +81,14 @@ dominantCharacterHighestWeight (RootSystem,Weight) := (R,l) -> (
 -- tensor product of two irreducible representations
 tensorProduct = method();
 tensorProduct (Weight,Weight,RootSystem,HashTable) := (l1,l2,R,W) -> (
-    l1' := entries l1;
-    l2' := entries l2;
-    rho := entries halfSumOfRoots(R);
-    tau := reducedDecomposition longestWeylGroupElement(R);
-    sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
+    pyData := rootSystemPythonData R;
+    lam1 := toPython entries l1;
+    lam2 := toPython entries l2;
     -- start the translation into python
-    rho = toPython rho;
-    lam1 := toPython l1';
-    lam2 := toPython l2';
-    tau = toPython tau;
-    simpleRoots := toPython (sRoots/(r -> entries r));
-    W =  toPython (W/(w -> toSequence entries w));
+    W = toPython (W/(w -> toSequence entries w));
     tensorP := import "tensorProduct";
-    result := tensorP@@("tensorProduct")(lam1, lam2, simpleRoots, rho, W, tau);
-    output := value pythonValue stripNumpyRepr toString result;
+    result := tensorP@@("tensorProduct")(lam1, lam2, pyData#"simpleRoots", pyData#"rho", W, pyData#"tau");
+    output := value result;
     output = new Tally from output;
     output = output/(v -> weight(R,toList v));
     return new HashTable from output;
@@ -104,39 +130,12 @@ symmetricPower (ZZ, Weight,RootSystem) := (n,l,R) -> (
     else if n == 0 then return new HashTable from {weight(R,toList(rank(R):0)) => 1}
     else if n == 1 then return new HashTable from {l => 1}
     else (
-        posRoots := elements positiveRoots(R);
-        rho := entries halfSumOfRoots(R);
-        tau := reducedDecomposition longestWeylGroupElement(R);
-        M := R#((keys R)#0);
-        rootNorms := R#((keys R)#1);
-        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
-        l' := entries l;
-        poin := new MutableHashTable;
-        if not R#?"poincare1" then (
-            x := local x;
-            ZZ[x];
-            for t in subsets toList(1..rank(R)) do (
-                poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
-                );
-            R#"poincare1" = new HashTable from poin;
-            );
-        poin = R#"poincare1";
-        -- start the translation into python;
-        fractions := import "fractions";
-        Fraction := (fractions)@@("Fraction");
-        posRoots = toPython (posRoots/(r -> entries r));
-        rho = toPython rho;
-        lam := toPython l';
-        simpleRoots := toPython (sRoots/(r -> entries r));
-        M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-        M = toPython M;
-        n = toPython n;
-        tau = toPython tau;
-        rootNorms = toPython rootNorms;
-        poinc := toPython poin;
+        pyData := rootSystemPythonData R;
+        lam := toPython entries l;
+        poinc := rootSystemPoincarePythonData R;
         sym := import "symmetricPower";
-        result := sym@@("symmetricPower")(n, lam, posRoots, rho, simpleRoots, rootNorms, M, poinc, tau);
-        decomp := value pythonValue stripNumpyRepr toString result;
+        result := sym@@("symmetricPower")(toPython n, lam, pyData#"posRoots", pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc, pyData#"tau");
+        decomp := value result;
         decomp = new Tally from decomp;
         decomp = decomp/(v -> weight(R,toList v));
         return new HashTable from decomp;
@@ -151,40 +150,13 @@ multipleSymmetricPowerLie(ZZ, Weight, RootSystem) := (k, l, R) -> (
     else if k == 0 then return new HashTable from {weight(R,toList(rank(R):0)) => 1}
     else if k == 1 then return new HashTable from {l => 1}
     else (
-        posRoots := elements positiveRoots(R);
-        rho := entries halfSumOfRoots(R);
-        tau := reducedDecomposition longestWeylGroupElement(R);
-        M := R#((keys R)#0);
-        rootNorms := R#((keys R)#1);
-        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
-        l' := entries l;
-        poin := new MutableHashTable;
-        if not R#?"poincare1" then (
-            x := local x;
-            ZZ[x];
-            for t in subsets toList(1..rank(R)) do (
-                poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
-                );
-            R#"poincare1" = new HashTable from poin;
-            );
-        poin = R#"poincare1";
-        -- start the translation into python;
-        fractions := import "fractions";
-        Fraction := (fractions)@@("Fraction");
-        posRoots = toPython (posRoots/(r -> entries r));
-        rho = toPython rho;
-        lam := toPython l';
+        pyData := rootSystemPythonData R;
+        lam := toPython entries l;
         irr := toPython true;
-        simpleRoots := toPython (sRoots/(r -> entries r));
-        M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-        M = toPython M;
-        k = toPython k;
-        tau = toPython tau;
-        rootNorms = toPython rootNorms;
-        poinc := toPython poin;
+        poinc := rootSystemPoincarePythonData R;
         sym := import "multipleSymmetricPower";
-        result := sym@@("multipleSymmetricPower")(k, lam, posRoots, rho, simpleRoots, rootNorms, M, poinc, tau,irr);
-        decomp := value pythonValue stripNumpyRepr toString result;
+        result := sym@@("multipleSymmetricPower")(toPython k, lam, pyData#"posRoots", pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc, pyData#"tau",irr);
+        decomp := value result;
         decomp = decomp/(d -> new Tally from d);
         decomp = decomp/(tal -> new HashTable from tal/(v -> weight(R,toList v)));
         return decomp;
@@ -200,45 +172,20 @@ multipleSymmetricPowerLie (ZZ, HashTable, RootSystem) := (k, L, R) -> (
     else if k == 0 then return new HashTable from {weight(R,toList(rank(R):0)) => 1}
     else if k == 1 then return L
     else (
-        posRoots := elements positiveRoots(R);
-        rho := entries halfSumOfRoots(R);
-        tau := reducedDecomposition longestWeylGroupElement(R);
-        M := R#((keys R)#0);
-        rootNorms := R#((keys R)#1);
-        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
+        pyData := rootSystemPythonData R;
         L' := new Tally from L;
         L' = L'/(l -> toSequence entries l);
         L' = new HashTable from L';
         L' = for l in keys L' list (
             (l,L'#l)
             );
-        poin := new MutableHashTable;
-        if not R#?"poincare1" then (
-            x := local x;
-            ZZ[x];
-            for t in subsets toList(1..rank(R)) do (
-                poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
-                );
-            R#"poincare1" = new HashTable from poin;
-            );
-        poin = R#"poincare1";
+        poinc := rootSystemPoincarePythonData R;
         -- start the translation into python;
-        fractions := import "fractions";
-        Fraction := (fractions)@@("Fraction");
-        posRoots = toPython (posRoots/(r -> entries r));
-        rho = toPython rho;
         L' = toPython L';
         irr := toPython false;
-        simpleRoots := toPython (sRoots/(r -> entries r));
-        M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-        M = toPython M;
-        k = toPython k;
-        tau = toPython tau;
-        rootNorms = toPython rootNorms;
-        poinc := toPython poin;
         sym := import "multipleSymmetricPower";
-        result := sym@@("multipleSymmetricPower")(k, L', posRoots, rho, simpleRoots, rootNorms, M, poinc, tau,irr);
-        decomp := value pythonValue stripNumpyRepr toString result;
+        result := sym@@("multipleSymmetricPower")(toPython k, L', pyData#"posRoots", pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc, pyData#"tau",irr);
+        decomp := value result;
         output := new MutableHashTable;
         for w in keys decomp do (
             dec := decomp#w/(d -> new Tally from d);
@@ -259,39 +206,12 @@ exteriorPower (ZZ, Weight, RootSystem) := o -> (n,l,R) -> (
     else if n == 1 then return new HashTable from {l => 1}
     else if n > d then return new HashTable from {}
     else (
-        posRoots := elements positiveRoots(R);
-        rho := entries halfSumOfRoots(R);
-        tau := reducedDecomposition longestWeylGroupElement(R);
-        M := R#((keys R)#0);
-        rootNorms := R#((keys R)#1);
-        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
-        l' := entries l;
-        poin := new MutableHashTable;
-        if not R#?"poincare1" then (
-            x := local x;
-            ZZ[x];
-            for t in subsets toList(1..rank(R)) do (
-                poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
-                );
-            R#"poincare1" = new HashTable from poin;
-            );
-        poin = R#"poincare1";
-        -- start the translation into python;
-        fractions := import "fractions";
-        Fraction := (fractions)@@("Fraction");
-        posRoots = toPython (posRoots/(r -> entries r));
-        rho = toPython rho;
-        lam := toPython l';
-        simpleRoots := toPython (sRoots/(r -> entries r));
-        M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-        M = toPython M;
-        n = toPython n;
-        tau = toPython tau;
-        rootNorms = toPython rootNorms;
-        poinc := toPython poin;
+        pyData := rootSystemPythonData R;
+        lam := toPython entries l;
+        poinc := rootSystemPoincarePythonData R;
         alt := import "exteriorPower";
-        result := alt@@("exteriorPower")(n, lam, posRoots, rho, simpleRoots, rootNorms, M, poinc, tau);
-        decomp := value pythonValue stripNumpyRepr toString result;
+        result := alt@@("exteriorPower")(toPython n, lam, pyData#"posRoots", pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc, pyData#"tau");
+        decomp := value result;
         decomp = new Tally from decomp;
         decomp = decomp/(v -> weight(R,toList v));
         return new HashTable from decomp;
@@ -307,40 +227,13 @@ multipleExteriorPowerLie(ZZ, Weight, RootSystem) := (k, l, R) -> (
     else if k == 0 then return new HashTable from {weight(R,toList(rank(R):0)) => 1}
     else if k == 1 then return new HashTable from {l => 1}
     else (
-        posRoots := elements positiveRoots(R);
-        rho := entries halfSumOfRoots(R);
-        tau := reducedDecomposition longestWeylGroupElement(R);
-        M := R#((keys R)#0);
-        rootNorms := R#((keys R)#1);
-        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
-        l' := entries l;
-        poin := new MutableHashTable;
-        if not R#?"poincare1" then (
-            x := local x;
-            ZZ[x];
-            for t in subsets toList(1..rank(R)) do (
-                poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
-                );
-            R#"poincare1" = new HashTable from poin;
-            );
-        poin = R#"poincare1";
-        -- start the translation into python;
-        fractions := import "fractions";
-        Fraction := (fractions)@@("Fraction");
-        posRoots = toPython (posRoots/(r -> entries r));
-        rho = toPython rho;
-        lam := toPython l';
+        pyData := rootSystemPythonData R;
+        lam := toPython entries l;
         irr := toPython true;
-        simpleRoots := toPython (sRoots/(r -> entries r));
-        M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-        M = toPython M;
-        k = toPython k;
-        tau = toPython tau;
-        rootNorms = toPython rootNorms;
-        poinc := toPython poin;
+        poinc := rootSystemPoincarePythonData R;
         ext := import "multipleExteriorPower";
-        result := ext@@("multipleExteriorPower")(k, lam, posRoots, rho, simpleRoots, rootNorms, M, poinc, tau,irr);
-        decomp := value pythonValue stripNumpyRepr toString result;
+        result := ext@@("multipleExteriorPower")(toPython k, lam, pyData#"posRoots", pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc, pyData#"tau",irr);
+        decomp := value result;
         decomp = decomp/(d -> new Tally from d);
         decomp = decomp/(tal -> new HashTable from tal/(v -> weight(R,toList v)));
         return decomp;
@@ -356,45 +249,20 @@ multipleExteriorPowerLie (ZZ, HashTable, RootSystem) := (k, L, R) -> (
     else if k == 0 then return new HashTable from {weight(R,toList(rank(R):0)) => 1}
     else if k == 1 then return L
     else (
-        posRoots := elements positiveRoots(R);
-        rho := entries halfSumOfRoots(R);
-        tau := reducedDecomposition longestWeylGroupElement(R);
-        M := R#((keys R)#0);
-        rootNorms := R#((keys R)#1);
-        sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
+        pyData := rootSystemPythonData R;
         L' := new Tally from L;
         L' = L'/(l -> toSequence entries l);
         L' = new HashTable from L';
         L' = for l in keys L' list (
             (l,L'#l)
             );
-        poin := new MutableHashTable;
-        if not R#?"poincare1" then (
-            x := local x;
-            ZZ[x];
-            for t in subsets toList(1..rank(R)) do (
-                poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
-                );
-            R#"poincare1" = new HashTable from poin;
-            );
-        poin = R#"poincare1";
+        poinc := rootSystemPoincarePythonData R;
         -- start the translation into python;
-        fractions := import "fractions";
-        Fraction := (fractions)@@("Fraction");
-        posRoots = toPython (posRoots/(r -> entries r));
-        rho = toPython rho;
         L' = toPython L';
         irr := toPython false;
-        simpleRoots := toPython (sRoots/(r -> entries r));
-        M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-        M = toPython M;
-        k = toPython k;
-        tau = toPython tau;
-        rootNorms = toPython rootNorms;
-        poinc := toPython poin;
         ext := import "multipleExteriorPower";
-        result := ext@@("multipleExteriorPower")(k, L', posRoots, rho, simpleRoots, rootNorms, M, poinc, tau,irr);
-        decomp := value pythonValue stripNumpyRepr toString result;
+        result := ext@@("multipleExteriorPower")(toPython k, L', pyData#"posRoots", pyData#"rho", pyData#"simpleRoots", pyData#"rootNorms", pyData#"M", poinc, pyData#"tau",irr);
+        decomp := value result;
         output := new MutableHashTable;
         for w in keys decomp do (
             dec := decomp#w/(d -> new Tally from d);
