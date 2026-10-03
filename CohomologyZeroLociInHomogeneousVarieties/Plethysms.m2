@@ -1132,273 +1132,85 @@ repDual (DynkinType,Weight) := (D,l) -> (
     )
 
 
-pieces = method();
-pieces (DynkinDiagram,List) := (D,nodi) -> (
-    n := #D;
-    l := {};
-    lTemp := {};
-    for i from 0 to n-1 do (
-        if isMember(i+1,lTemp) then (
-            lTemp = unique(lTemp | flatten D#i);
-            )
-        else (
-            if i =!= 0 then l = l | {lTemp};
-            lTemp = unique flatten {i+1,flatten D#i};
-            );
-        );
-    l = l | {lTemp};
-    L := {};
-    for i in nodi do (
-        for m in l do (
-            M := {};
-            for j in m do (
-                if j >= i then (
-                    M = M | {j+1};
-                    )		    
-                else (
-                    M = M | {j};
+-- connected components of an arbitrary subset S of nodes of R, computed
+-- directly from R's own (global) adjacency via "neighbors", so it works
+-- uniformly for any Dynkin type/shape -- chains (A,B,C), forks (D), and
+-- the irregular forks of E6/E7/E8 alike. Each component is returned as a
+-- sorted list of global node indices (1-based, as in P#"parabolic").
+-- Replaces the old positional "pieces" function, which assumed a
+-- contiguous/path-like layout and silently mis-grouped branching diagrams
+-- (this is what used to force a separate hardcoded dualE/dualListE for
+-- type E -- see git history).
+subsetComponents = (R,S) -> (
+    D := dynkinDiagram R;
+    remaining := set toList S; -- coerce: S may be a Parabolic, not a plain Set
+    comps := {};
+    while remaining =!= set{} do (
+        seed := (sort toList remaining)#0;
+        comp := set{seed};
+        changed := true;
+        while changed do (
+            changed = false;
+            for i in toList remaining do (
+                if not member(i,comp) and (neighbors(D,i) * comp) =!= set{} then (
+                    comp = comp + set{i};
+                    changed = true;
                     );
                 );
-            L = L | {M};
             );
-        l = L;
-        L = {};
+        comps = comps | {sort toList comp};
+        remaining = remaining - comp;
         );
-    return l;
+    comps
     )
 
--*
+-- dual of a single weight component t (the representation's highest weight,
+-- twisted by a line bundle) on X. This is the whole mathematical content of
+-- "dual HomogeneousVectorBundle" below: it only depends on t and X, not on
+-- the other weights/multiplicities of the bundle E it came from (for an
+-- irreducible E, rank E == rank of this single irrep, so the old
+-- three-way split into "irreducible" / "single weight" / "several weights"
+-- was running the exact same computation three times with no real
+-- difference -- here it's just applied once per weight).
+--
+-- -w_0 of the Levi subgroup acts on each irreducible factor of the Levi's
+-- root system independently (repDual, per Dynkin type/component), so we
+-- split the marked nodes into connected components via subsetComponents
+-- (correct for any Dynkin type, E included) and reassemble by global node
+-- index, instead of relying on the old pieces()'s positional bookkeeping.
+dualWeight = (t,X) -> (
+    R := X#"rootSystem";
+    P := X#"parabolicSubgroup";
+    P0 := P#"parabolic";
+    Et := homogeneousVectorBundle({t},{1},X);
+    r := rank Et;
+    t1 := (toGlobalWeights(Et#"parabolicWeights",P))#0; -- component without line bundle
+    c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
+    vals := new MutableHashTable; -- global node index -> dual Levi-weight entry
+    for comp in subsetComponents(R,P0) do (
+        d := dynkinType rootSystem(R, parabolic(R, set comp));
+        dualComp := entries repDual(d, weight(rootSystem d, t^(apply(comp, i -> i-1))));
+        for idx from 0 to #comp - 1 do vals#(comp#idx) = dualComp#idx;
+        );
+    l := weight(rootSystem(R,P#"parabolic"), apply(sort toList P0, i -> vals#i));
+    t2 := (toGlobalWeights({l},P))#0;
+    c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
+    v := -(c1 + c2)/r;
+    v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank R)) - P0));
+    t3 := t - t1; -- line bundle component
+    weight(R, entries(vector v-t3))
+    )
+
 dual HomogeneousVectorBundle := E -> (
     E = E#1; -- I need this because in the definition of dual the options were written in a strange way...
     X := E#"underlyingVariety";
     R := X#"rootSystem";
-    P := X#"parabolicSubgroup";
     if X#"picardRank" == rank R then ( -- case of the complete flag
         return homogeneousVectorBundle(apply(E#"weights", t -> -t),E#"multiplicities",X);
         );
-    dynR := dynkinType(R);
-    oldWeights := E#"weights";
-    newWeights := E#"weights"/(w -> {});
-    Psorted := sort toList P#"parabolic";
-    for i from 0 to #dynR-1 do (
-        currentWeights := oldWeights/(w -> take(entries w,(dynR#i)#1));
-        Ri := rootSystem dynkinType {dynR#i};
-        ni := rank Ri;
-        Pi := set select(Psorted, j -> ni >= j);
-        Psorted = toList(set Psorted - Pi)/(j -> j - ni);
-        Pi = newParabolic(Ri,Pi);
-        Xi := homogeneousVariety(Ri,Pi);
-        Ei := homogeneousVectorBundle(currentWeights,E#"multiplicities",Xi);
-        -- inserted to avoid a problem with the numbering of the E's
-        if dyn#0 == "E" then newWeights = newWeights/(w -> w | entries dualListE); ------------------ errore per ora
-        RPi := rootSystem(Ri,Pi#"parabolic");
-        D := apply(connectedComponents(dynkinDiagram RPi),connectedDynkinType);
-        piece := pieces(dynkinDiagram RPi, sort toList(set(toList(1..rank Ri)) - Pi#"parabolic"));
-        piece = piece/(s -> sort s);
-        d := 0;
-        currentWeights = currentWeights/(w -> vector w);
-        -- cases other than E
-        if E#"irreducible" then (
-            r := rank Ei;
-            t := currentWeights#0;
-            t1 := (toGlobalWeights(toParabolicWeights(currentWeights,Pi),Pi))#0; -- component without line bundle
-            c1 := chern(1,homogeneousVectorBundle({t1},{1},Xi));
-            l := {};
-            if #D =!= #piece then error "I am making a mistake in splitting for the dual";
-            for k from 0 to #D-1 do (
-                d = dynkinType {D#k};
-                -- this check only serves to avoid an indexing error in the two antennae of type D
-                if (dynR#i)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank Ri - 3, Pi#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
-                else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
-                );
-            l = weight(RPi,l);
-            t2 := (toGlobalWeights({l},Pi))#0;
-            c2 := chern(1,homogeneousVectorBundle({t2},{1},Xi));
-            v := -(c1 + c2)/r;
-            v = mixWeights((toParabolicWeights({t2},Pi))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank Ri)) - (Pi#"parabolic")));
-            t3 := t - t1; -- line bundle component
-            newWeights = newWeights/(w -> w | entries(vector v-t3)
-            return homogeneousVectorBundle({weight(Ri, entries(vector v-t3))},{1},Xi); ----- sono arrivato qui ma ci sono errori
-            )
-        else if #(E#"weights") == 1 then (
-            t = (E#"weights")#0;
-            r = rank homogeneousVectorBundle({t},{1},X);
-            t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
-            c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-            l = {};
-            for k from 0 to #D-1 do (
-                d = dynkinType {D#k};
-                if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
-                else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
-                );
-            l = weight(RP,l);
-            t2 = (toGlobalWeights({l},P))#0;
-            c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
-            v = -(c1 + c2)/r;
-            v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
-            t3 = t - t1; -- line bundle component
-            return homogeneousVectorBundle({weight(R, entries(vector v-t3))},E#"multiplicities",X);
-            )
-        else (
-            w := {};
-            for i from 0 to #(E#"weights")-1 do (
-                t = (E#"weights")#i;
-                r = rank homogeneousVectorBundle({t},{1},X);
-                t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- component without line bundle
-                c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-                l = {};
-                for k from 0 to #D-1 do (
-                    d = dynkinType {D#k};
-                    if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
-                    else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
-                    );
-                l = weight(RP,l);
-                t2 = (toGlobalWeights({l},P))#0;
-                c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
-                v = -(c1 + c2)/r;
-                v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
-                t3 = t - t1; -- line bundle component
-                w = w | {weight(R, entries(vector v-t3))};
-                );
-            return homogeneousVectorBundle(w,E#"multiplicities",X);
-            );
-        )
-*-
-dual HomogeneousVectorBundle := E -> (
-    E = E#1; -- I need this because in the definition of dual the options were written in a strange way...
-    X := E#"underlyingVariety";
-    R := X#"rootSystem";
-    P := X#"parabolicSubgroup";
-    if X#"picardRank" == rank R then ( -- case of the complete flag
-        return homogeneousVectorBundle(apply(E#"weights", t -> -t),E#"multiplicities",X);
-        );
-    dynR := dynkinType(R);
-    -- inserted to avoid a problem with the numbering of the E's
-    if ((dynkinType(R))#0)#0 == "E" then return dualE E;
-    RP := rootSystem(R,P#"parabolic");
-    D := apply(connectedComponents(dynkinDiagram RP),connectedDynkinType);
-    piece := pieces(dynkinDiagram RP, sort toList(set(toList(1..rank R)) - P#"parabolic"));
-    piece = piece/(s -> sort s);
-    d := 0;
-    -- cases other than E
-    if E#"irreducible" then (
-        r := rank E;
-        t := (E#"weights")#0;
-        t1 := (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
-        c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
-        l := {};
-        if #D =!= #piece then error "I am making a mistake in splitting for the dual";
-        for k from 0 to #D-1 do (
-            d = dynkinType {D#k};
-            -- this check only serves to avoid an indexing error in the two antennae of type D
-            if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
-            else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
-            );
-        l = weight(RP,l);
-        t2 := (toGlobalWeights({l},P))#0;
-        c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
-        v := -(c1 + c2)/r;
-        v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank R)) - (P#"parabolic")));
-        t3 := t - t1; -- line bundle component
-        return homogeneousVectorBundle({weight(R, entries(vector v-t3))},{1},X);
-        )
-    else if #(E#"weights") == 1 then (
-        t = (E#"weights")#0;
-        r = rank homogeneousVectorBundle({t},{1},X);
-        t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
-        c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-        l = {};
-        for k from 0 to #D-1 do (
-            d = dynkinType {D#k};
-            if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
-            else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
-            );
-        l = weight(RP,l);
-        t2 = (toGlobalWeights({l},P))#0;
-        c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
-        v = -(c1 + c2)/r;
-        v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
-        t3 = t - t1; -- line bundle component
-        return homogeneousVectorBundle({weight(R, entries(vector v-t3))},E#"multiplicities",X);
-        )
-    else (
-        w := {};
-        for i from 0 to #(E#"weights")-1 do (
-            t = (E#"weights")#i;
-            r = rank homogeneousVectorBundle({t},{1},X);
-            t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- component without line bundle
-            c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-            l = {};
-            for k from 0 to #D-1 do (
-                d = dynkinType {D#k};
-                if ((dynkinType(R))#0)#0 == "D" and d#0 == {"A", 3} and k == #D -1 and not member(rank R - 3, P#"parabolic")  then l = l | {first entries t^(apply(piece#k,i -> i-1))} | {last entries t^(apply(piece#k,i -> i-1))} | {(entries t^(apply(piece#k,i -> i-1)))#1}
-                else l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1))));
-                );
-            l = weight(RP,l);
-            t2 = (toGlobalWeights({l},P))#0;
-            c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
-            v = -(c1 + c2)/r;
-            v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
-            t3 = t - t1; -- line bundle component
-            w = w | {weight(R, entries(vector v-t3))};
-            );
-        return homogeneousVectorBundle(w,E#"multiplicities",X);
-        );
+    homogeneousVectorBundle(apply(E#"weights", t -> dualWeight(t,X)), E#"multiplicities", X)
     )
 
--- dual in the type E case
-dualE = method();
-dualE HomogeneousVectorBundle := E -> (
-    X := E#"underlyingVariety";
-    R := X#"rootSystem";
-    P := X#"parabolicSubgroup";
-    RP := rootSystem(R,P#"parabolic");
-    if E#"irreducible" then (
-        r := rank E;
-        t := (E#"weights")#0;
-        t1 := (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
-        c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
-        l := weight(RP, dualListE(t,R,P));
-        t2 := (toGlobalWeights({l},P))#0;
-        c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
-        v := -(c1 + c2)/r;
-        v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank R)) - (P#"parabolic")));
-        t3 := t - t1; -- line bundle component
-        return homogeneousVectorBundle({weight(R, entries(vector v-t3))},{1},X);
-        )
-    else if #(E#"weights") == 1 then (
-        t = (E#"weights")#0;
-        r = rank homogeneousVectorBundle({t},{1},X);
-        t1 = (toGlobalWeights(E#"parabolicWeights",P))#0; -- component without line bundle
-        c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-        l = weight(RP, dualListE(t,R,P));
-        t2 = (toGlobalWeights({l},P))#0;
-        c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
-        v = -(c1 + c2)/r;
-        v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
-        t3 = t - t1; -- line bundle component
-        return homogeneousVectorBundle({weight(R, entries(vector v-t3))},E#"multiplicities",X);
-        )
-    else (
-        w := {};
-        for i from 0 to #(E#"weights")-1 do (
-            t = (E#"weights")#i;
-            r = rank homogeneousVectorBundle({t},{1},X);
-            t1 = (toGlobalWeights(E#"parabolicWeights",P))#i; -- component without line bundle
-            c1 = chern(1,homogeneousVectorBundle({t1},{1},X));
-            l = weight(RP, dualListE(t,R,P));
-            t2 = (toGlobalWeights({l},P))#0;
-            c2 = chern(1,homogeneousVectorBundle({t2},{1},X));
-            v = -(c1 + c2)/r;
-            v = mixWeights((toParabolicWeights({t2},P))#0, (entries v)/(i -> lift(i,ZZ)), toList ((set toList(1..rank X#"rootSystem")) - ((X#"parabolicSubgroup")#"parabolic")));
-            t3 = t - t1; -- line bundle component
-            w = w | {weight(R, entries(vector v-t3))};
-            );
-        return homogeneousVectorBundle(w,E#"multiplicities",X);
-        );
-    );
-
-    
 
 dual FiltrationBundle := F -> (
     F = F#1; -- I need this because in the definition of dual the options were written in a strange way...
@@ -1409,304 +1221,3 @@ dual FiltrationBundle := F -> (
     filtrationBundle(S,X)
     )
     
--- aux method for duality in the E case
-dualListE = method();
-dualListE (Vector,RootSystem,ParabolicGroup) := (t,R,P) -> (
-    RP := rootSystem(R,P#"parabolic");
-    d := 0;
-    l := {};
-    -- case in which 4 is marked
-    if not member(4,P#"parabolic") then (
-        if not member(2,P#"parabolic") then (
-            if not member(3,P#"parabolic") then (
-                if member(1,P#"parabolic") then l = entries t^{0};
-                )
-            else (
-                if member(1,P#"parabolic") then l = entries t^{2,0}
-                else  l = entries t^{2};
-                );
-            -- I complete l with what happens in the entries after 4
-            R' := rootSystem(rootSystemA(rank R -4), parabolic(rootSystemA(rank R -4),set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
-            D := apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-            piece := pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
-            for k from 0 to #D-1 do (
-                d = dynkinType {D#k};
-                l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+4))));
-                );
-            )
-        -- case in which 4 is marked but 2 is not
-        else (
-            if not member(3,P#"parabolic") then (
-                if member(1,P#"parabolic") then l = entries t^{0,1}
-                else l = entries t^{1};
-                )
-            else (
-                if member(1,P#"parabolic") then l = entries t^{2,1,0}
-                else  l = entries t^{1,2};
-                );
-            -- I complete l with what happens in the entries after 4
-            R' = rootSystem(rootSystemA(rank R -4), parabolic(rootSystemA(rank R -4),set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
-            D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-            piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{5,6,7,8}))/(i -> i -4))));
-            for k from 0 to #D-1 do (
-                d = dynkinType {D#k};
-                l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+4))));
-                );
-            );
-        )
-    -- case in which 4 is not marked
-    else (
-        -- case in which 4 is not marked but 2 is
-        if not member(2,P#"parabolic") then (
-            if not member(5,P#"parabolic") then (
-                if not member(3,P#"parabolic") then (
-                    if member(1,P#"parabolic") then l = entries t^{0,3}
-                    else l = entries t^{3};
-                    )
-                else (
-                    if member(1,P#"parabolic") then l = entries t^{3,2,0}
-                    else  l = entries t^{3,2};
-                    );
-                -- I complete l with what happens in the entries after 5
-                R' = rootSystem(rootSystemA(rank R -5), parabolic(rootSystemA(rank R -5),set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
-                D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
-                for k from 0 to #D-1 do (
-                    d = dynkinType {D#k};
-                    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+5))));
-                    );
-                )
-            -- case in which 5 is not marked
-            else (
-                if not member(3,P#"parabolic") then (
-                    if member(1,P#"parabolic") then l = entries t^{0};
-                    -- I complete l with what happens in the entries after 3
-                    R' = rootSystem(rootSystemA(rank R -3), parabolic(rootSystemA(rank R -3),set ((toList(P#"parabolic" * set{4,5,6,7,8}))/(i -> i -3))));
-                    D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                    piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{4,5,6,7,8}))/(i -> i -3))));
-                    for k from 0 to #D-1 do (
-                        d = dynkinType {D#k};
-                        l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+3))));
-                        );
-                    )
-                else (
-                    if not member(1,P#"parabolic") then (
-                        if rank R == 6 then (
-                            if not member(6,P#"parabolic") then l = entries t^{4,3,2}
-                            else l = entries t^{5,4,3,2};
-                            )
-                        else if rank R == 7 then (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t^{4,3,2};
-                                if member(7,P#"parabolic") then l = l | entries t^{6};
-                                )
-                            else (
-                                if not member(7,P#"parabolic") then l = entries t^{5,4,3,2}
-                                else l = entries t^{6,5,4,3,2};
-                                );
-                            )
-                        else (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t^{4,3,2};
-                                -- I complete l with what happens in the entries after 6
-                                R' = rootSystem(rootSystemA(rank R -3), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                                piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                for k from 0 to #D-1 do (
-                                    d = dynkinType {D#k};
-                                    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
-                                    );				    )
-                            else (
-                                if not member(7,P#"parabolic") then (
-                                    l = entries t^{5,4,3,2};
-                                    if member(8,P#"parabolic") then l = l | entries t^{7};
-                                    )
-                                else (
-                                    if not member(8,P#"parabolic") then l = entries t^{6,5,4,3,2}
-                                    else l = entries t^{7,6,5,4,3,2};
-                                    );
-                                );
-                            );
-                        )
-                    else (
-                        -- node 1 not marked
-                        if rank R == 6 then (
-                            if not member(6,P#"parabolic") then l = entries t^{4,3,2,0}
-                            else l = entries t^{5,4,3,2,0};
-                            )
-                        else if rank R == 7 then (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t^{4,3,2,0};
-                                if member(7,P#"parabolic") then l = l | entries t^{6};
-                                )
-                            else (
-                                if not member(7,P#"parabolic") then l = entries t^{5,4,3,2,0}
-                                else l = entries t^{6,5,4,3,2,0};
-                                );
-                            )
-                        else (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t^{4,3,2,0};
-                                -- I complete l with what happens in the entries after 6
-                                R' = rootSystem(rootSystemA(rank R -3), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                                piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                for k from 0 to #D-1 do (
-                                    d = dynkinType {D#k};
-                                    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
-                                    );				    )
-                            else (
-                                if not member(7,P#"parabolic") then (
-                                    l = entries t^{5,4,3,2,0};
-                                    if member(8,P#"parabolic") then l = l | entries t^{7};
-                                    )
-                                else (
-                                    if not member(8,P#"parabolic") then l = entries t^{6,5,4,3,2,0}
-                                    else l = entries t^{7,6,5,4,3,2,0};
-                                    );
-                                );
-                            );
-                        );
-                    );
-                );
-            )
-        -- case in which neither 4 nor 2 are marked
-        else (		
-            if not member(5,P#"parabolic") then (
-                if not member(3,P#"parabolic") then (
-                    if not member(1,P#"parabolic") then l = entries t^{3,1}
-                    else l = entries t^{0,3,1};
-                    )
-                else (
-                    if not member(1,P#"parabolic") then l = entries t^{2,1,3}
-                    else l = entries t^{1,0,3,2};
-                    );
-                -- I complete l with what happens in the entries after 5
-                R' = rootSystem(rootSystemA(rank R -5), parabolic(rootSystemA(rank R -5),set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
-                D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{6,7,8}))/(i -> i -5))));
-                for k from 0 to #D-1 do (
-                    d = dynkinType {D#k};
-                    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+5))));
-                    );
-                )
-            -- case node 5 not marked
-            else (
-                if not member(3,P#"parabolic") then (
-                    if member(1,P#"parabolic") then l = entries t^{0};
-                    if rank R == 6 then (
-                        if not member(6,P#"parabolic") then l = l | entries t^{4,3,1}
-                        else l = l | entries t^{5,4,3,1};
-                        )
-                    else if rank R == 7 then (
-                        if not member(6,P#"parabolic") then (
-                            l = l | entries t^{4,3,1};
-                            if member(7,P#"parabolic") then l = l | entries t^{6};
-                            )
-                        else (
-                            if not member(7,P#"parabolic") then l = l | entries t^{5,4,3,1}
-                            else l = l | entries t^{6,5,4,3,1};
-                            );
-                        )
-                    else (
-                        if not member(6,P#"parabolic") then (
-                            l = l | entries t^{4,3,1};
-                            if not member(7,P#"parabolic") then (
-                                if member(8,P#"parabolic") then l = l | entries t^{7};
-                                )
-                            else (
-                                if not member(8,P#"parabolic") then l = l | entries t^{6}
-                                else l = l | entries t^{7,6};
-                                );
-                            )
-                        else (
-                            if not member(7,P#"parabolic") then (
-                                l = l | entries t^{5,4,3,1};
-                                if  member(8,P#"parabolic") then l = l | entries t^{7};
-                                )
-                            else (
-                                if not member(8,P#"parabolic") then l = l | entries t^{6,5,4,3,1}
-                                else l = l | entries t^{7,6,5,4,3,1};
-                                );
-                            );		    
-                        );
-                    )
-                --case node 3 not marked
-                else (
-                    if not member(1,P#"parabolic") then (
-                        -- here I need to change the antennae depending on the parity of the length
-                        if rank R == 6 then (
-                            if not member(6,P#"parabolic") then l = entries t^{1,2,3,4}
-                            else l = entries t ^{2,1,3,4,5};
-                            )
-                        else if rank R == 7 then (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t ^{1,2,3,4};
-                                if member(7,P#"parabolic") then l = l | entries t^{6};
-                                )
-                            else if not member(7,P#"parabolic") then l = entries t ^{2,1,3,4,5}
-                            else l = entries t ^{1,2,3,4,5,6};
-                            )
-                        else (
-                            if not member(6,P#"parabolic") then (
-                                l =  entries t ^{1,2,3,4};
-                                -- I complete l with what happens in the entries after 6
-                                R' = rootSystem(rootSystemA(rank R -6), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                                piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                for k from 0 to #D-1 do (
-                                    d = dynkinType {D#k};
-                                    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
-                                    );
-                                )
-                            else if not member(7,P#"parabolic") then (
-                                l = entries t ^{2,1,3,4,5};
-                                if member(8,P#"parabolic") then l = l | entries t^{7};
-                                )
-                            else if not member(8,P#"parabolic") then (
-                                l = entries t ^{1,2,3,4,5,6};
-                                )
-                            else (
-                                l = entries t ^{2,1,3,4,5,6,7};
-                                );
-                            );
-                        )
-                    -- here I am in the case where the first node is not marked
-                    else (
-                        if rank R == 6 then (
-                            l = entries t^{0,4,2,3,1};
-                            )
-                        else if rank R == 7 then (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t^{0,4,2,3,1};
-                                if member(7,P#"parabolic") then l = l | entries t^{6};
-                                )
-                            else l = entries t ^{5,1,4,3,2,0};
-                            )
-                        else (
-                            if not member(6,P#"parabolic") then (
-                                l = entries t^{0,4,2,3,1};
-                                -- I complete l with what happens in the entries after 6
-                                R' = rootSystem(rootSystemA(rank R -6), parabolic(rootSystemA(rank R -6),set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                D = apply(connectedComponents(dynkinDiagram R'),connectedDynkinType);
-                                piece = pieces(dynkinDiagram R', sort toList(set(toList(1..rank R)) - set ((toList(P#"parabolic" * set{7,8}))/(i -> i -6))));
-                                for k from 0 to #D-1 do (
-                                    d = dynkinType {D#k};
-                                    l = l | entries repDual(d,weight(rootSystem d, t^(apply(piece#k,i -> i-1+6))));
-                                    );
-                                )
-                            else if not member(7,P#"parabolic") then (
-                                l = entries t ^{5,1,2,3,4,0};
-                                if member(8,P#"parabolic") then l = l | entries t^{7};
-                                )
-                            else (
-                                l = entries t^{0,1,2,3,4,5,6,7};
-                                );
-                            );
-                        );
-                    );
-                );
-            );
-        );
-    return l;
-    )
