@@ -1164,6 +1164,26 @@ subsetComponents = (R,S) -> (
     comps
     )
 
+-- -w0 as a permutation pi of the simple roots of R: w0(alpha_i) = -alpha_pi(i)
+-- (an involution). The dual of the irreducible representation with highest
+-- weight l has highest weight l' with l'_pi(i) = l_i, whatever the type of R
+-- and however its nodes are numbered (a positional rule like repDual's is
+-- wrong as soon as the numbering of a component is not the standard one,
+-- e.g. D4 minus node 1, where the A3 component is the chain 3-2-4).
+oppositionPermutationCache = new MutableHashTable;
+oppositionPermutation = R -> (
+    key := rootSystemKey R;
+    if not oppositionPermutationCache#?key then (
+        w0 := longestWeylGroupElement R;
+        n := rank R;
+        oppositionPermutationCache#key = for i from 1 to n list (
+            img := entries (w0 * simpleRoot(R,i));
+            first select(1..n, j -> entries(-(simpleRoot(R,j))) == img)
+            );
+        );
+    oppositionPermutationCache#key
+    )
+
 -- dual of a single weight component t (the representation's highest weight,
 -- twisted by a line bundle) on X. This is the whole mathematical content of
 -- "dual HomogeneousVectorBundle" below: it only depends on t and X, not on
@@ -1173,11 +1193,9 @@ subsetComponents = (R,S) -> (
 -- was running the exact same computation three times with no real
 -- difference -- here it's just applied once per weight).
 --
--- -w_0 of the Levi subgroup acts on each irreducible factor of the Levi's
--- root system independently (repDual, per Dynkin type/component), so we
--- split the marked nodes into connected components via subsetComponents
--- (correct for any Dynkin type, E included) and reassemble by global node
--- index, instead of relying on the old pieces()'s positional bookkeeping.
+-- The Levi part of the dual weight is obtained with the opposition
+-- permutation -w_0 of the Levi root system (see oppositionPermutation),
+-- which needs no case distinction on the Dynkin type or on the node labels.
 dualWeight = (t,X) -> (
     R := X#"rootSystem";
     P := X#"parabolicSubgroup";
@@ -1186,13 +1204,12 @@ dualWeight = (t,X) -> (
     r := rank Et;
     t1 := (toGlobalWeights(Et#"parabolicWeights",P))#0; -- component without line bundle
     c1 := chern(1,homogeneousVectorBundle({t1},{1},X));
-    vals := new MutableHashTable; -- global node index -> dual Levi-weight entry
-    for comp in subsetComponents(R,P0) do (
-        d := dynkinType subRootSystem(X, comp);
-        dualComp := entries repDual(d, weight(rootSystem d, t^(apply(comp, i -> i-1))));
-        for idx from 0 to #comp - 1 do vals#(comp#idx) = dualComp#idx;
-        );
-    l := weight(leviRootSystem X, apply(sort toList P0, i -> vals#i));
+    RL := leviRootSystem X;
+    pi := oppositionPermutation RL;
+    lt := entries (Et#"parabolicWeights")#0;
+    dualLevi := new MutableList from lt;
+    for i from 0 to #lt - 1 do dualLevi#(pi#i - 1) = lt#i;
+    l := weight(RL, toList dualLevi);
     t2 := (toGlobalWeights({l},P))#0;
     c2 := chern(1,homogeneousVectorBundle({t2},{1},X));
     v := -(c1 + c2)/r;
