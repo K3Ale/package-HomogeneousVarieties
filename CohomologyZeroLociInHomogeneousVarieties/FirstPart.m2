@@ -122,12 +122,28 @@ toPartitions Weight := v -> (
 
 ---------------------- rank and dimension ------------------------------
 
+-- Levi root systems are rebuilt from scratch by rootSystem(R,P) for every
+-- bundle, so anything cached on the RootSystem object itself is lost; key
+-- caches on its content instead (Cartan matrix + root norms, i.e. the
+-- CartanMatrixTrInv/RootNorms entries read positionally elsewhere).
+rootSystemKey = R -> (entries cartanMatrix R, R#((keys R)#1));
+
+-- coefficients of each positive coroot on the simple coroots, and the
+-- Weyl denominator prod <rho, alpha^vee>, per root system
+weylFormulaCache = new MutableHashTable;
+
 weylFormula = method(TypicalValue => ZZ);
 weylFormula (Weight, RootSystem) := (l,R) -> (
-    ro := halfSumOfRoots(R);
-    num := apply(toList(positiveRoots(R)), s -> eval(R,l+ro,s));
-    den := apply(toList(positiveRoots(R)), s -> eval(R,ro,s));
-    lift(product(num)/product(den),ZZ)
+    key := rootSystemKey R;
+    if not weylFormulaCache#?key then (
+        n := rank R;
+        fund := apply(n, i -> weight(R, apply(n, j -> if i == j then 1 else 0)));
+        C := apply(toList positiveRoots(R), r -> apply(fund, w -> eval(R,w,r)));
+        weylFormulaCache#key = (C, product(C, c -> sum c));
+        );
+    (coroots, den) := weylFormulaCache#key;
+    lPlusRho := apply(entries l, x -> x + 1);
+    lift(product(coroots, c -> sum(c, lPlusRho, times)) / den, ZZ)
     );
 
 dim HomogeneousVariety := X -> (

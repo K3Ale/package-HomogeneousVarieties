@@ -10,19 +10,18 @@
 -- then convert -- which was a size-dependent round trip for no benefit
 -- over converting the original PythonObject directly.
 
--- Everything below (positive roots, rho, the simple roots, the Cartan
--- matrix inverse as exact Fractions, the root norms, and the reduced word
--- of the longest Weyl group element) depends only on R, never on the
--- weight(s) a given call is acting on. Before this cache existed, every
--- single call to the functions in this file recomputed and re-toPython'd
--- all of it from scratch, which dominated the running time once these
--- functions were called many times (e.g. from the quadratic loop in
--- tensorProduct(HomogeneousVectorBundle,HomogeneousVectorBundle), or from
--- bottPython/hodgeNumbers). We cache it once per RootSystem, following the
--- same pattern already used for R#"poincare1" below.
+-- Root-system data handed to Python (positive roots, rho, simple roots,
+-- Cartan matrix inverse as exact Fractions, root norms, reduced word of the
+-- longest Weyl group element, Poincare table), already converted with
+-- toPython. Keyed by rootSystemKey (see FirstPart.m2) rather than stored on
+-- R, since equal Levi root systems are rebuilt as new objects per bundle.
+rootSystemPythonCache = new MutableHashTable;
+rootSystemPoincareCache = new MutableHashTable;
+
 rootSystemPythonData = method();
 rootSystemPythonData RootSystem := R -> (
-    if not R#?"lieFunctionsPythonData" then (
+    key := rootSystemKey R;
+    if not rootSystemPythonCache#?key then (
         posRoots := elements positiveRoots(R);
         rho := entries halfSumOfRoots(R);
         M := R#((keys R)#0);
@@ -31,7 +30,7 @@ rootSystemPythonData RootSystem := R -> (
         tau := reducedDecomposition longestWeylGroupElement(R);
         fractions := import "fractions";
         Fraction := (fractions)@@("Fraction");
-        R#"lieFunctionsPythonData" = new HashTable from {
+        rootSystemPythonCache#key = new HashTable from {
             "posRoots" => toPython (posRoots/(r -> entries r)),
             "rho" => toPython rho,
             "simpleRoots" => toPython (sRoots/(r -> entries r)),
@@ -40,27 +39,22 @@ rootSystemPythonData RootSystem := R -> (
             "tau" => toPython tau
             };
         );
-    R#"lieFunctionsPythonData"
+    rootSystemPythonCache#key
     )
 
--- R#"poincare1" is itself already cached (as before); this just also
--- caches its one-time toPython conversion, which was previously redone on
--- every call.
 rootSystemPoincarePythonData = method();
 rootSystemPoincarePythonData RootSystem := R -> (
-    if not R#?"poincare1" then (
+    key := rootSystemKey R;
+    if not rootSystemPoincareCache#?key then (
         poin := new MutableHashTable;
         x := local x;
         ZZ[x];
         for t in subsets toList(1..rank(R)) do (
             poin#(toSequence t) = sub(poincareSeries(R,parabolic(R,set t),x), x=>1);
             );
-        R#"poincare1" = new HashTable from poin;
+        rootSystemPoincareCache#key = toPython new HashTable from poin;
         );
-    if not R#?"poincare1Python" then (
-        R#"poincare1Python" = toPython (R#"poincare1");
-        );
-    R#"poincare1Python"
+    rootSystemPoincareCache#key
     )
 
 dominantCharacterHighestWeight = method();
