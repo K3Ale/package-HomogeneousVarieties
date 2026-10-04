@@ -349,23 +349,38 @@ def tensorProduct(l1, l2, simpleRoots, rho, W, tau):
     return {k: v for k, v in T.items() if v != 0}  # drop zero multiplicities
 
 
-def tensor_product_diz(posRoots, L1, L2, rho, simpleRoots, rootNorms, M, poincare, tau):
+def tensor_product_diz(posRoots, L1, L2, rho, simpleRoots, rootNorms, M, poincare, tau, chars=None):
     """
     Tensor product of two virtual representations given as weight-
     multiplicity dictionaries L1, L2 (e.g. outputs of
     dominantCharacterHighestWeight or of a previous call to this function).
 
-    For every pair of weights (l1 from L1, l2 from L2), the character of
-    the irreducible representation with highest weight l1 is computed and
-    combined with l2 via tensorProduct; all contributions are summed,
-    weighted by mult1 * mult2.
+    For every pair of weights (l1 from L1, l2 from L2), V(l1) (x) V(l2) is
+    computed by tensorProduct, walking the character of whichever of the two
+    has fewer dominant weights; all contributions are summed, weighted by
+    mult1 * mult2. The characters are kept in chars ({weight tuple ->
+    character}), which callers share across calls on the same root system
+    so that each one is computed by Freudenthal's formula only once.
     """
+    if chars is None:
+        chars = {}
+
+    def character(w):
+        W = chars.get(w)
+        if W is None:
+            W = dominantCharacterHighestWeight(posRoots, w, rho, simpleRoots, rootNorms, M, poincare)
+            chars[w] = W
+        return W
+
     T = {}
     for l1, mult1 in L1.items():
+        W1 = character(l1)
         for l2, mult2 in L2.items():
-            # NB: could be optimized by choosing the "better" of l1, l2 here
-            W = dominantCharacterHighestWeight(posRoots, l1, rho, simpleRoots, rootNorms, M, poincare)
-            Ttemp = tensorProduct(l1, l2, simpleRoots, rho, W, tau)
+            W2 = character(l2)
+            if len(W2) < len(W1):
+                Ttemp = tensorProduct(l2, l1, simpleRoots, rho, W2, tau)
+            else:
+                Ttemp = tensorProduct(l1, l2, simpleRoots, rho, W1, tau)
             for l, coeff in Ttemp.items():
                 T[l] = T.get(l, 0) + coeff * mult1 * mult2
     return {k: v for k, v in T.items() if v != 0}
@@ -496,16 +511,20 @@ def symmetricPower(n, l, posRoots, rho, simpleRoots, rootNorms, M, poincare, tau
     elif n == 1:
         return {tuple(l): 1}
     else:
-        S = {}
-        for k in range(1, n + 1):
-            term1 = symmetricPower(n - k, l, posRoots, rho, simpleRoots, rootNorms, M, poincare, tau)
-            term2 = adamsOp(
-                dominantCharacterHighestWeight(posRoots, l, rho, simpleRoots, rootNorms, M, poincare),
-                k, simpleRoots, tau,
-            )
-            T = tensor_product_diz(posRoots, term1, term2, rho, simpleRoots, rootNorms, M, poincare, tau)
-            for t, coeff in T.items():
-                t = tuple(t)
-                S[t] = S.get(t, 0) + coeff
-        # divide by n (guaranteed to be exact by the recursion)
-        return {s: val // n for s, val in S.items() if val != 0}
+        # the character of V and its Adams operations are computed once, and
+        # Sym^0..Sym^(n-1) are kept, so each power is built only once
+        W = dominantCharacterHighestWeight(posRoots, l, rho, simpleRoots, rootNorms, M, poincare)
+        adams = [None] + [adamsOp(W, k, simpleRoots, tau) for k in range(1, n + 1)]
+        zero_weight = tuple(0 for _ in range(len(l)))
+        powers = [{zero_weight: 1}, {tuple(l): 1}]
+        chars = {tuple(l): W}
+        for i in range(2, n + 1):
+            S = {}
+            for k in range(1, i + 1):
+                T = tensor_product_diz(posRoots, powers[i - k], adams[k], rho, simpleRoots, rootNorms, M, poincare, tau, chars)
+                for t, coeff in T.items():
+                    t = tuple(t)
+                    S[t] = S.get(t, 0) + coeff
+            # divide by i (guaranteed to be exact by the recursion)
+            powers.append({s: val // i for s, val in S.items() if val != 0})
+        return powers[n]

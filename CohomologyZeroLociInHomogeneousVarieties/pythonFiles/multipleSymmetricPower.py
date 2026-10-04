@@ -350,23 +350,38 @@ def tensorProduct(l1, l2, simpleRoots, rho, W, tau):
     return {k: v for k, v in T.items() if v != 0}  # drop zero multiplicities
 
 
-def tensor_product_diz(posRoots, L1, L2, rho, simpleRoots, rootNorms, M, poincare, tau):
+def tensor_product_diz(posRoots, L1, L2, rho, simpleRoots, rootNorms, M, poincare, tau, chars=None):
     """
     Tensor product of two virtual representations given as weight-
     multiplicity dictionaries L1, L2 (e.g. outputs of
     dominantCharacterHighestWeight or of a previous call to this function).
 
-    For every pair of weights (l1 from L1, l2 from L2), the character of
-    the irreducible representation with highest weight l1 is computed and
-    combined with l2 via tensorProduct; all contributions are summed,
-    weighted by mult1 * mult2.
+    For every pair of weights (l1 from L1, l2 from L2), V(l1) (x) V(l2) is
+    computed by tensorProduct, walking the character of whichever of the two
+    has fewer dominant weights; all contributions are summed, weighted by
+    mult1 * mult2. The characters are kept in chars ({weight tuple ->
+    character}), which callers share across calls on the same root system
+    so that each one is computed by Freudenthal's formula only once.
     """
+    if chars is None:
+        chars = {}
+
+    def character(w):
+        W = chars.get(w)
+        if W is None:
+            W = dominantCharacterHighestWeight(posRoots, w, rho, simpleRoots, rootNorms, M, poincare)
+            chars[w] = W
+        return W
+
     T = {}
     for l1, mult1 in L1.items():
+        W1 = character(l1)
         for l2, mult2 in L2.items():
-            # NB: could be optimized by choosing the "better" of l1, l2 here
-            W = dominantCharacterHighestWeight(posRoots, l1, rho, simpleRoots, rootNorms, M, poincare)
-            Ttemp = tensorProduct(l1, l2, simpleRoots, rho, W, tau)
+            W2 = character(l2)
+            if len(W2) < len(W1):
+                Ttemp = tensorProduct(l2, l1, simpleRoots, rho, W2, tau)
+            else:
+                Ttemp = tensorProduct(l1, l2, simpleRoots, rho, W1, tau)
             for l, coeff in Ttemp.items():
                 T[l] = T.get(l, 0) + coeff * mult1 * mult2
     return {k: v for k, v in T.items() if v != 0}
@@ -475,7 +490,7 @@ def adamsOp(W, n, simpleRoots, tau):
     return {k: v for k, v in S.items() if v != 0}
 
 
-def symmetricPower(n, l, memory_sym, memory_adams, posRoots, rho, simpleRoots, rootNorms, M, poincare, tau, irr):
+def symmetricPower(n, l, memory_sym, memory_adams, posRoots, rho, simpleRoots, rootNorms, M, poincare, tau, irr, chars=None):
     """
     Helper for multipleSymmetricPower: weight multiplicities of Sym^n(V),
     given the already computed Sym^0..Sym^(n-1) (memory_sym) and Adams
@@ -499,7 +514,7 @@ def symmetricPower(n, l, memory_sym, memory_adams, posRoots, rho, simpleRoots, r
         for k in range(1, n + 1):
             term1 = memory_sym[n - k]
             term2 = memory_adams[k]
-            T = tensor_product_diz(posRoots, term1, term2, rho, simpleRoots, rootNorms, M, poincare, tau)
+            T = tensor_product_diz(posRoots, term1, term2, rho, simpleRoots, rootNorms, M, poincare, tau, chars)
             for t, coeff in T.items():
                 t = tuple(t)
                 S[t] = S.get(t, 0) + coeff
@@ -527,12 +542,13 @@ def multipleSymmetricPower(n, l, posRoots, rho, simpleRoots, rootNorms, M, poinc
     """
     if irr:
         W = dominantCharacterHighestWeight(posRoots, l, rho, simpleRoots, rootNorms, M, poincare)
+        chars = {tuple(l): W}
         memory_adams = [adamsOp(W, i, simpleRoots, tau) for i in range(0, n + 1)]
         zero_weight = tuple(0 for _ in range(len(l)))
         memory_sym = [{zero_weight: 1}, {tuple(l): 1}]
         for i in range(2, n + 1):
             memory_sym.append(
-                symmetricPower(i, l, memory_sym, memory_adams, posRoots, rho, simpleRoots, rootNorms, M, poincare, tau, irr)
+                symmetricPower(i, l, memory_sym, memory_adams, posRoots, rho, simpleRoots, rootNorms, M, poincare, tau, irr, chars)
             )
         return memory_sym
     else:
@@ -540,6 +556,7 @@ def multipleSymmetricPower(n, l, posRoots, rho, simpleRoots, rootNorms, M, poinc
         L = l
         memory_char = {}
         memory_adams = {}
+        chars = {}
         memory_sym = {}
         zero_weight = tuple(0 for _ in range(len(L[0][0])))
         for l, m in L:  # shadows the outer l on purpose: L holds the real weights
@@ -551,7 +568,7 @@ def multipleSymmetricPower(n, l, posRoots, rho, simpleRoots, rootNorms, M, poinc
                 memory_sym[tuple(l)].append(
                     symmetricPower(
                         i, l, memory_sym[tuple(l)], memory_adams[tuple(l)],
-                        posRoots, rho, simpleRoots, rootNorms, M, poincare, tau, irr,
+                        posRoots, rho, simpleRoots, rootNorms, M, poincare, tau, irr, chars,
                     )
                 )
         return memory_sym
