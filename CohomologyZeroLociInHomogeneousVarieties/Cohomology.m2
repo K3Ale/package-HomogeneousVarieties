@@ -259,7 +259,9 @@ cokerCohomology(List, List,HashTable, HashTable) := (A, B, oldBoundsA, oldBounds
             subsequence = {};
             );
         );
-    toReturn := apply(C, e -> e % ideal equations);
+    -- one ideal for all entries, so that its Groebner basis is computed once
+    equationsIdeal := ideal equations;
+    toReturn := apply(C, e -> e % equationsIdeal);
     -- return the resulting coker in a trimmed ring
     appearingVars := select(unique flatten (toReturn / (c -> flatten entries first coefficients(c))), v -> (degree v)_0 > 0);
     y := symbol y;
@@ -267,7 +269,8 @@ cokerCohomology(List, List,HashTable, HashTable) := (A, B, oldBoundsA, oldBounds
     substitutions := (for i from 0 to #appearingVars - 1 list appearingVars_i => y_i);
     gensC := generators ring C_0;
     substitutions = substitutions | apply(select(gensC, g -> not member(g, appearingVars)), g -> g => 20000);
-    toReturn = toReturn / (v -> sub(v, substitutions));
+    -- substitute in all entries at once: sub builds its ring map from the ring and the list only
+    toReturn = flatten entries sub(matrix{toReturn}, substitutions);
     -- creates new bounds
     bounds := new MutableHashTable;
     for e in appearingVars do (
@@ -424,7 +427,9 @@ centralMemberCohomology(List, List,HashTable, HashTable) := (A, B, oldBoundsA, o
             subsequence = {};
             );
         );
-    toReturn := apply(C, e -> e % ideal equations);
+    -- one ideal for all entries, so that its Groebner basis is computed once
+    equationsIdeal := ideal equations;
+    toReturn := apply(C, e -> e % equationsIdeal);
     -- return the resulting coker in a trimmed ring
     appearingVars := select(unique flatten (toReturn / (c -> flatten entries first coefficients(c))), v -> (degree v)_0 > 0);
     y := symbol y;
@@ -432,7 +437,8 @@ centralMemberCohomology(List, List,HashTable, HashTable) := (A, B, oldBoundsA, o
     substitutions := (for i from 0 to #appearingVars - 1 list appearingVars_i => y_i);
     gensC := generators ring C_0;
     substitutions = substitutions | apply(select(gensC, g -> not member(g, appearingVars)), g -> g => 20000);
-    toReturn = toReturn / (v -> sub(v, substitutions));
+    -- substitute in all entries at once: sub builds its ring map from the ring and the list only
+    toReturn = flatten entries sub(matrix{toReturn}, substitutions);
     -- create the new bounds
     bounds := new MutableHashTable;
     for e in appearingVars do (
@@ -539,7 +545,9 @@ kerCohomology(List, List,HashTable, HashTable) := (B, C, oldBoundsB, oldBoundsC)
             );
         );
     -- determine equations from Euler characteristic being 0 for every sequence
-    toReturn := apply(A, e -> e % ideal equations);
+    -- one ideal for all entries, so that its Groebner basis is computed once
+    equationsIdeal := ideal equations;
+    toReturn := apply(A, e -> e % equationsIdeal);
     --notSolved = notSolved /(l -> apply(l, i -> i % ideal equations));
     -- return the resulting coker in a trimmed ring
     appearingVars := select(unique flatten (toReturn / (c -> flatten entries first coefficients(c))), v -> (degree v)_0 > 0);
@@ -548,7 +556,8 @@ kerCohomology(List, List,HashTable, HashTable) := (B, C, oldBoundsB, oldBoundsC)
     substitutions := (for i from 0 to #appearingVars - 1 list appearingVars_i => y_i);
     gensA := generators ring A_0;
     substitutions = substitutions | apply(select(gensA, g -> not member(g, appearingVars)), g -> g => 20000);
-    toReturn = toReturn / (v -> sub(v, substitutions));
+    -- substitute in all entries at once: sub builds its ring map from the ring and the list only
+    toReturn = flatten entries sub(matrix{toReturn}, substitutions);
     -- create the new bounds
     bounds := new MutableHashTable;
     for e in appearingVars do (
@@ -711,24 +720,7 @@ hodgeNumbers EmbeddedVariety := o -> Y -> (
     K := {};
     if o.Verbose then << "computing the koszul complex" << endl;
     timedIf(o.Verbose, () -> (
-        if F#?"koszul" then (
-            K = reverse F#"koszul";
-            )
-        else (
-            D := determinant F';
-            r := rank F;
-            S := {D};
-            S' := {structureSheaf X};
-            extTemp := multipleExteriorPower(floor((r-1)/2),F);
-            for i from 1 to floor((r-1)/2) do (
-                S = S|{tensorProduct(extTemp#i,D)};
-                S' = {dual extTemp#i}|S';
-                );
-            if even r then S = S|{exteriorPower(lift(r/2,ZZ),F')}|S';
-            if odd r then S = S|S';
-            F#"koszul" = reverse S;
-            K = reverse F#"koszul";
-            );
+        K = reverse koszul(X,F);
         ));
     n := Y#"dimension";
     if o.Verbose then << "computing the exterior powers of the cotangent bundle of X" << endl;
@@ -920,24 +912,7 @@ hodgeNumbers (ZZ,EmbeddedVariety) := o -> (k,Y) -> (
     -- here I rewrite the whole koszul complex
     K := {};
     timedIf(o.Verbose, () -> (
-        if F#?"koszul" then (
-            K = reverse F#"koszul";
-            )
-        else (
-            D := determinant F';
-            r := rank F;
-            S := {D};
-            S' := {structureSheaf X};
-            extTemp := multipleExteriorPower(floor((r-1)/2),F);
-            for i from 1 to floor((r-1)/2) do (
-                S = S|{tensorProduct(extTemp#i,D)};
-                S' = {dual extTemp#i}|S';
-                );
-            if even r then S = S|{exteriorPower(lift(r/2,ZZ),F')}|S';
-            if odd r then S = S|S';
-            F#"koszul" = reverse S;
-            K = reverse F#"koszul";
-            );
+        K = reverse koszul(X,F);
         ));
     n := Y#"dimension";
     if o.Verbose then << "computing the exterior powers of the cotangent bundle of X" << endl;
@@ -1072,24 +1047,7 @@ hochschildNumbers EmbeddedVariety := o -> Y -> (
     -- here I rewrite the whole koszul complex
     K := {};
     timedIf(o.Verbose, () -> (
-        if F#?"koszul" then (
-            K = reverse F#"koszul";
-            )
-        else (
-            D := determinant F';
-            r := rank F;
-            S := {D};
-            S' := {structureSheaf X};
-            extTemp := multipleExteriorPower(floor((r-1)/2),F);
-            for i from 1 to floor((r-1)/2) do (
-                S = S|{tensorProduct(extTemp#i,D)};
-                S' = {dual extTemp#i}|S';
-                );
-            if even r then S = S|{exteriorPower(lift(r/2,ZZ),F')}|S';
-            if odd r then S = S|S';
-            F#"koszul" = reverse S;
-            K = reverse F#"koszul";
-            );
+        K = reverse koszul(X,F);
         ));
     n := Y#"dimension";
     if o.Verbose then << "computing the exterior powers of the tangent bundle of X" << endl;
@@ -1336,25 +1294,7 @@ hochschildNumbersTwisted (EmbeddedVariety,HomogeneousVectorBundle) := o -> (Y,E)
     -- here I rewrite the whole koszul complex
     K := {};
     timedIf(o.Verbose, () -> (
-        if F#?"koszul" then (
-            K = reverse F#"koszul";
-            )
-        else (
-            D := determinant F';
-            r := rank F;
-            S := {D};
-            S' := {structureSheaf X};
-            extTemp := multipleExteriorPower(floor((r-1)/2),F);
-            for i from 1 to floor((r-1)/2) do (
-                --extTemp = exteriorPower(i,F);
-                S = S|{tensorProduct(extTemp#i,D)};
-                S' = {dual extTemp#i}|S';
-                );
-            if even r then S = S|{exteriorPower(lift(r/2,ZZ),F')}|S';
-            if odd r then S = S|S';
-            F#"koszul" = reverse S;
-            K = reverse F#"koszul";
-            );
+        K = reverse koszul(X,F);
         ));
     n := Y#"dimension";
     if o.Verbose then << "computing the exterior powers of the tangent bundle of X" << endl;

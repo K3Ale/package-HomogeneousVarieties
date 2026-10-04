@@ -56,9 +56,10 @@ tensorProductIrreducible = (E1,E2) -> (
     Ttemp = new HashTable from Ttemp;
     d := (rank(E2)*chern(1,E1) + rank(E1)*chern(1,E2))/(rank(E1)*rank(E2));
     -- this d must be the SLOPE of every summand that I compute with the representations
+    S := slopeMatrix X;
     for t in keys Ttemp do (
-        E := homogeneousVectorBundle(toGlobalWeights({t},X#"parabolicSubgroup"), {1}, X);
-        c := lift(d-chern(1,E)/rank E,ZZ);
+        t0 := (toGlobalWeights({t},X#"parabolicSubgroup"))#0;
+        c := lift(d - S * sub(vector entries t0, QQ),ZZ);
         l' := weight(R,mixWeights(t,entries c,LX));
         if T#?(l') then T#(l') = T#(l') + Ttemp#t
         else T#(l') = Ttemp#t;
@@ -849,12 +850,14 @@ koszul (HomogeneousVariety,HomogeneousVectorBundle) := (X,F) -> (
         r := rank F;
         S := {D};
         S' := {structureSheaf X};
-        extTemp := multipleExteriorPower(floor((r-1)/2),F);
+        -- for even r the middle term is wedge^(r/2) F' = wedge^(r/2) F (x) det F',
+        -- one more step of the same recursion instead of a separate computation
+        extTemp := multipleExteriorPower(floor(r/2),F);
         for i from 1 to floor((r-1)/2) do (
             S = S|{tensorProduct(extTemp#i,D)};
             S' = {dual extTemp#i}|S';
             );
-        if even r then S = S|{exteriorPower(lift(r/2,ZZ),F')}|S';
+        if even r then S = S|{tensorProduct(extTemp#(lift(r/2,ZZ)),D)}|S';
         if odd r then S = S|S';
         F#"koszul" = reverse S;
         return F#"koszul";
@@ -885,6 +888,25 @@ determinantData = X -> (
             );
         );
     X.cache#"determinantData"
+    )
+
+-- the slope c_1(E_t)/rank(E_t), on the marked nodes, is linear in the global
+-- weight t (all weights of E_t differ from t by roots of the Levi part): row i
+-- of this matrix is t -> determinantCoeff(R', pos+1, t^L) for the data (i,
+-- R', pos, L) of the marked node i, as in determinant below. Depends only on X.
+slopeMatrix = X -> (
+    if not X.cache#?"slopeMatrix" then (
+        n := rank X#"rootSystem";
+        X.cache#"slopeMatrix" = matrix(QQ, for d in determinantData X list (
+                (i, R', pos, L) := d;
+                for j from 0 to n-1 list (
+                    k := position(L, a -> a == j);
+                    if k === null then 0
+                    else determinantCoeff(R', pos+1, vector apply(#L, a -> if a == k then 1 else 0))
+                    )
+                ));
+        );
+    X.cache#"slopeMatrix"
     )
 
 determinant HomogeneousVectorBundle := o -> E -> (
