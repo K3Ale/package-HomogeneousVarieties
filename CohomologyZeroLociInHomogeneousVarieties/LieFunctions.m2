@@ -1,14 +1,7 @@
 
--- Results coming back from Python (dicts/lists/tuples of numpy scalars)
--- are converted to M2 directly via "value result": the Python package's
--- (value, PythonObject) hooks walk the object natively (numpy ints and
--- floats satisfy numbers.Integral/numbers.Real, so they convert to ZZ/RR
--- like plain Python numbers). This used to go through
--- "value pythonValue stripNumpyRepr toString result" -- stringify the
--- whole result, regex out NumPy's "np.int64(...)" repr wrapper, hand the
--- cleaned string back to Python to re-eval it into an object, and only
--- then convert -- which was a size-dependent round trip for no benefit
--- over converting the original PythonObject directly.
+-- Results coming back from Python (dicts/lists/tuples of plain Python
+-- ints) are converted to M2 directly via "value result": the Python
+-- package's (value, PythonObject) hooks walk the object natively.
 
 -- Root-system data handed to Python (positive roots, rho, simple roots,
 -- Cartan matrix inverse as exact Fractions, root norms, reduced word of the
