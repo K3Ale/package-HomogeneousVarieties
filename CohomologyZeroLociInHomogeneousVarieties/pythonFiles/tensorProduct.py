@@ -11,19 +11,17 @@ group, used to speed up the dominance checks via reflect_sequence.
 """
 
 from math import floor
-import numpy as np
 
 
 def reflect(n, p, simpleRoots):
     """Apply the n-th simple reflection to the weight p (in root coordinates)."""
-    p = np.array(p)
-    r = np.array(simpleRoots[n - 1])
-    return p - p[n - 1] * r
+    c = p[n - 1]
+    return [a - c * b for a, b in zip(p, simpleRoots[n - 1])]
 
 
 def reflect_sequence(L, p, simpleRoots):
     """Apply the simple reflections listed in L to p, in reverse order."""
-    q = np.array(p, dtype=int)
+    q = [int(x) for x in p]
     for i in reversed(L):
         q = reflect(i, q, simpleRoots)
     return q
@@ -34,19 +32,18 @@ def dominant_conjugate(lam, simpleRoots):
     Bring the weight lam into the dominant Weyl chamber by successive simple
     reflections.
 
-    Returns (dominant_weight, k), where k is the number of reflections used
-    (its parity gives the sign of the weight's contribution below).
+    Returns (dominant_weight, k), where k is the number of reflections used.
     """
-    v = np.array(lam)
+    v = list(lam)
     k = 0
-    rank = len(lam)
-    while not all(x >= 0 for x in v):
-        for j in range(1, rank + 1):
-            if v[j - 1] < 0:
+    while True:
+        for j, x in enumerate(v):
+            if x < 0:
                 k += 1
-                v = reflect(j, v, simpleRoots)
-                break  # restart the outer while-loop with the new v
-    return v, k
+                v = reflect(j + 1, v, simpleRoots)
+                break
+        else:
+            return v, k
 
 
 def tensorProduct(l1, l2, simpleRoots, rho, W, tau):

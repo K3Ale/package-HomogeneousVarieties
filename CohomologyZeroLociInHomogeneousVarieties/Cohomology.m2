@@ -1,25 +1,12 @@
 bottPython = method();
 bottPython HomogeneousVectorBundle := E -> (
     X := E#"underlyingVariety";
-    R := X#"rootSystem";
-    rho := toPython entries halfSumOfRoots(R);
-    posRoots := elements positiveRoots(R);
-    rootNorms := R#((keys R)#1);
-    sRoots := toList (1..rank(R))/(i -> simpleRoot(R,i));
-    M := R#((keys R)#0);
-    fractions := import "fractions";
-    Fraction := (fractions)@@("Fraction");
+    pyData := rootSystemPythonData X#"rootSystem";
     S := toPython (E#"weights"/(s -> entries s));
     m := toPython E#"multiplicities";
     d := toPython dim(X);
-    posRoots = toPython (posRoots/(r -> entries r));
-    simpleRoots := toPython (sRoots/(r -> entries r));
-    M = entries M/(r -> r/(p -> (Fraction numerator p) / (Fraction denominator p)));
-    M = toPython M;
-    rootNorms = toPython rootNorms;
     bottP := import "bott_py";
-    --bottPy := symbol bottPy;
-    result := bottP@@("bottPy")(S, m, rho,simpleRoots, posRoots, rootNorms, M, d);
+    result := bottP@@("bottPy")(S, m, pyData#"rho", pyData#"simpleRoots", pyData#"posRoots", pyData#"rootNorms", pyData#"M", d);
     E#"cohomology" = toList(value result)
     );
 
