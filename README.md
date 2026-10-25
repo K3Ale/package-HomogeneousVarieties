@@ -41,6 +41,8 @@ WorkInProgress
 - Macaulay2
 - The `Schubert2`, `WeylGroups`, and `LieAlgebraRepresentations` M2 packages (bundled with Macaulay2)
 
+For good performance, `LieAlgebraRepresentations` from [Macaulay2/M2#4756](https://github.com/Macaulay2/M2/pull/4756) or a later release is recommended.
+
 
 ## Author
 
