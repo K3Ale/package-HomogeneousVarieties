@@ -50,9 +50,8 @@ tensorProductIrreducible = (E1,E2) -> (
         );
     if rank(E1) == 1 then return homogeneousVectorBundle(apply(E2#"weights", l -> l + (E1#"weights")#0), E2#"multiplicities",X);
     l1 := (E1#"parabolicWeights")#0;
-    W := dominantCharacterHighestWeight(RP,l1);
     l2 := (E2#"parabolicWeights")#0;
-    Ttemp = tensorProduct(l1,l2,RP,W);
+    Ttemp = tensorProduct(l1,l2,RP);
     Ttemp = new HashTable from Ttemp;
     d := (rank(E2)*chern(1,E1) + rank(E1)*chern(1,E2))/(rank(E1)*rank(E2));
     -- this d must be the SLOPE of every summand that I compute with the representations

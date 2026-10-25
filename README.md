@@ -38,8 +38,8 @@ WorkInProgress
 
 ## Requirements
 
-- Macaulay2 ≥ 1.25.11 built with Python support (needed for the `Python` package's `@@` syntax)
-- The `Schubert2`, `Python`, and `WeylGroups` M2 packages (bundled with Macaulay2)
+- Macaulay2
+- The `Schubert2`, `WeylGroups`, and `LieAlgebraRepresentations` M2 packages (bundled with Macaulay2)
 
 
 ## Author

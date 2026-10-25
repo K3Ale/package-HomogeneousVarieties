@@ -1,15 +1,3 @@
-bottPython = method();
-bottPython HomogeneousVectorBundle := E -> (
-    X := E#"underlyingVariety";
-    pyData := rootSystemPythonData X#"rootSystem";
-    S := toPython (E#"weights"/(s -> entries s));
-    m := toPython E#"multiplicities";
-    d := toPython dim(X);
-    bottP := import "bott_py";
-    result := bottP@@("bottPy")(S, m, pyData#"rho", pyData#"simpleRoots", pyData#"posRoots", pyData#"rootNorms", pyData#"M", d);
-    E#"cohomology" = toList(value result)
-    );
-
 bott = method(); 
 bott HomogeneousVectorBundle := E -> (
     if E#"cohomology" =!= null then return E#"cohomology";
@@ -35,17 +23,17 @@ bott HomogeneousVectorBundle := E -> (
 
 cohomology FiltrationBundle := o -> E -> (
     if E#"cohomology" =!= null then return (E#"cohomology",new HashTable from {});
-    if E#"totally reducible" then return (bottPython E,new HashTable from {});
+    if E#"totally reducible" then return (bott E,new HashTable from {});
     F := reverse E#"factors";
-    H1 := bottPython F#0;
-    H2 := bottPython F#1;
-    if (bottPython(F#0 * dual F#1))#1 =!= 0 then (
+    H1 := bott F#0;
+    H2 := bott F#1;
+    if (bott(F#0 * dual F#1))#1 =!= 0 then (
         H := centralMemberCohomology(H1,H2,new HashTable from {},new HashTable from {});
         )
     else H = (H1 + H2,new HashTable from {}); -- if the ses splits the cohomology are known
     -- start with the nested ses
     for i from 2 to #F-1 do (
-        H = centralMemberCohomology(H#0,bottPython F#i,H#1,new HashTable from {});
+        H = centralMemberCohomology(H#0,bott F#i,H#1,new HashTable from {});
         );
     R := (E#"underlyingVariety")#"rootSystem";
     d := dim(E#"underlyingVariety");
@@ -69,17 +57,17 @@ cohomology FiltrationBundle := o -> E -> (
 -- this method is written just to allow to compute cohomology using the shortcut HH
 homology FiltrationBundle := o -> E -> (
     if E#"cohomology" =!= null then return (E#"cohomology",new HashTable from {});
-    if E#"totally reducible" then return (bottPython E,new HashTable from {});
+    if E#"totally reducible" then return (bott E,new HashTable from {});
     F := reverse E#"factors";
-    H1 := bottPython F#0;
-    H2 := bottPython F#1;
-    if ((bottPython(F#0 * dual F#1))#0)#1 =!= 0 then (
+    H1 := bott F#0;
+    H2 := bott F#1;
+    if ((cohomology(F#0 * dual F#1))#0)#1 =!= 0 then (
         H := centralMemberCohomology(H1,H2,new HashTable from {},new HashTable from {});
         )
     else H = (H1 + H2,new HashTable from {}); -- if the ses splits the cohomology are known
     -- start with the nested ses
     for i from 2 to #F-1 do (
-        H = centralMemberCohomology(H#0,bottPython F#i,H#1,new HashTable from {});
+        H = centralMemberCohomology(H#0,bott F#i,H#1,new HashTable from {});
         );
     R := (E#"underlyingVariety")#"rootSystem";
     d := dim(E#"underlyingVariety");

@@ -297,8 +297,6 @@ sortLayer = (R,S) -> (
     apply(Y,i->S_(last i))
     )
 
-adjointRepresentation = method();
-adjointRepresentation RootSystem := R -> first sortLayer (R,toList positiveRoots R)
 
 leqComponentwise = method();
 leqComponentwise (Vector,Vector) := (u, v) -> (

@@ -9,7 +9,8 @@ newPackage(
     AuxiliaryFiles => true,
     DebuggingMode => false,
     Reload => false,
-    PackageExports => {"Schubert2","Python","WeylGroups"}
+    PackageImports => {"LieAlgebraRepresentations"},
+    PackageExports => {"Schubert2","WeylGroups"}
     )
 
 
@@ -39,7 +40,6 @@ export {
     "isSingular",
     "isAmple",
     "isGloballyGenerated",
-    "adjointRepresentation",
     "weylFormula",
     "eulerCharacteristic",
     "eulerCharacteristicCotangent",
@@ -66,23 +66,6 @@ export {
 
 
 -* Code section *-
-packageDir := currentFileDirectory;
-
-------------------------------------------------------------------
--- Check Python
-------------------------------------------------------------------
-if not (options Python).OptionalComponentsPresent then
-    error ///CohomologyZeroLociInHomogeneousVarieties requires a version of
-Macaulay2 built with Python support, which is not available in this
-installation.
-
-Most official Macaulay2 binary releases already include Python support:
-    https://github.com/Macaulay2/M2/releases
-If you compiled Macaulay2 from source, reconfigure and rebuild with:
-    ./configure --with-python
-and reinstall this package afterwards.///;
-
-((import "sys")@@("path"))@@append(toPython (packageDir | "CohomologyZeroLociInHomogeneousVarieties/pythonFiles/"));
 
 --"This package contains several methods for computing several invariants of homogeneous varieties and of zero loci of homogeneous vector bundles.",
 
