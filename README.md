@@ -33,7 +33,13 @@ A package for working with homogeneous vector bundles and their zero loci.
 
 ## Usage
 
-WorkInProgress
+The documentation, with examples for every function, can be opened with
+
+```m2
+   viewHelp "CohomologyZeroLociInHomogeneousVarieties"
+```
+
+after installing the package as in step 4.
 
 
 ## Requirements

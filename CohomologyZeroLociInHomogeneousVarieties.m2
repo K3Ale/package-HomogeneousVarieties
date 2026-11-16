@@ -1,7 +1,7 @@
 newPackage(
     "CohomologyZeroLociInHomogeneousVarieties",
     Version => "0.1",
-    Date => "Sep 9, 2026",
+    Date => "Oct 31, 2026",
     Headline => "homogeneous vector bundles",
     Keywords => {"Algebraic Geometry"},
     Authors => {{ Name => "Alessandro Frassineti", Email => "alessandro.frassineti@edu.unige.it", HomePage => "https://sites.google.com/view/alessandrofrassineti-math/home-page/"}},
@@ -79,12 +79,12 @@ load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/Cohomolog
 
 -* Documentation section *-
 
---load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/docs.m2")
+load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/docs.m2")
 
 
 -* Test section *-
 
---load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/tests.m2")
+load (currentFileDirectory | "CohomologyZeroLociInHomogeneousVarieties/tests.m2")
 
 end
 
@@ -92,7 +92,7 @@ end
 for i from 0 to 9 do check (i,"CohomologyZeroLociInHomogeneousVarieties")
 for i from 10 to 19 do check (i,"CohomologyZeroLociInHomogeneousVarieties")
 for i from 20 to 29 do check (i,"CohomologyZeroLociInHomogeneousVarieties")
-for i from 30 to 36 do check (i,"CohomologyZeroLociInHomogeneousVarieties")
+for i from 30 to 35 do check (i,"CohomologyZeroLociInHomogeneousVarieties")
 
 restart
 uninstallPackage "CohomologyZeroLociInHomogeneousVarieties"
