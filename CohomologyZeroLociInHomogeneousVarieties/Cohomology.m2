@@ -345,7 +345,7 @@ cokerCohomology(List, List,HashTable, HashTable) := (A, B, oldBoundsA, oldBounds
                     );
                 )
             else (
-                try (bounds#(sub((l(-2)),substitutions)))#"min" = myMin(l#(-1),oldBounds);
+                try (bounds#(sub((l_(-2)),substitutions)))#"min" = myMin(l#(-1),oldBounds);
                 -- could add a condition on the second-to-last unknown
                 );
             );
@@ -493,7 +493,7 @@ centralMemberCohomology(List, List,HashTable, HashTable) := (A, B, oldBoundsA, o
                 );
             )
         else (
-            try (bounds#(sub((l(-2)),substitutions)))#"min" = myMin(l#(-1),oldBounds);
+            try (bounds#(sub((l_(-2)),substitutions)))#"min" = myMin(l#(-1),oldBounds);
             -- could add a condition on the second-to-last unknown
             );
         );
@@ -628,7 +628,7 @@ kerCohomology(List, List,HashTable, HashTable) := (B, C, oldBoundsB, oldBoundsC)
                     );
                 )
             else (
-                try (bounds#(sub((l(-2)),substitutions)))#"min" = myMin(l#(-1),oldBounds);
+                try (bounds#(sub((l_(-2)),substitutions)))#"min" = myMin(l#(-1),oldBounds);
                 -- could add a condition on the second-to-last unknown
                 );
             );
